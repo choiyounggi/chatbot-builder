@@ -2,7 +2,7 @@
 // Adding a sentence to a block edits the stored draft right away (like a save), so it needs the
 // draft without unsaved changes; it reaches users after 배포용 학습 and 배포.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ApiError, ConflictError } from "../api/client";
 import { addUtterances, ignoreUtterances, listMarks, listUtterances, type QueueFilter, restoreUtterances, type Utterance } from "../api/training";
 import { ErrorNotice } from "../components/ErrorNotice";
@@ -61,9 +61,12 @@ function Queue() {
   const [rule, setRule] = useState<QueueFilter["rule"]>("misunderstood");
   const [intent, setIntent] = useState("");
   const [status, setStatus] = useState<QueueFilter["status"]>("pending");
-  const since = useMemo(() => periodStart(PERIODS.find((p) => p.id === period)?.days ?? null), [period]);
-  const filter: QueueFilter = { since, rule, intent: intent || null, status };
-  const queue = useQuery({ queryKey: ["utterances", draft.botId, filter], queryFn: () => listUtterances(draft.botId, filter) });
+  const filter = { period, rule, intent: intent || null, status };
+  const queue = useQuery({
+    queryKey: ["utterances", draft.botId, filter],
+    // the period's start is computed at each fetch: "오늘" stays today in a long session
+    queryFn: () => listUtterances(draft.botId, { ...filter, since: periodStart(PERIODS.find((p) => p.id === period)?.days ?? null) }),
+  });
   const targets = draft.doc ? targetsOf(draft.doc) : [];
   // outside the rows: a row leaves the list once handled, its result must stay visible
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -125,6 +128,7 @@ function QueueRow({ item, index, targets, onNotice }: {
     onSuccess: () => {
       onNotice({ tone: "ok", text: `‘${item.text}’을 ‘${labelOf(target)}’의 예문으로 넣었어요. 배포용 학습과 배포를 하면 사용자에게 반영돼요.` });
       void queryClient.invalidateQueries({ queryKey: ["draft", draft.botId] });
+      draft.rebuild(); // the test chat gets the new example, as after a save
       refresh();
     },
     onError: (error) => {
@@ -146,7 +150,8 @@ function QueueRow({ item, index, targets, onNotice }: {
     },
     onError: () => onNotice({ tone: "warn", text: "처리하지 못했어요. 잠시 후 다시 시도해 주세요." }),
   });
-  const busy = add.isPending || mark.isPending;
+  // while the draft is being re-read its ETag is about to change: another add now would be refused
+  const busy = add.isPending || mark.isPending || draft.query.isFetching;
   const id = `q-target-${index}`;
   return (
     <li className="queue-item">

@@ -80,7 +80,10 @@ export function DraftProvider({ botId, children }: { botId: string; children: Re
   const update = useCallback((change: (doc: BotDoc) => BotDoc) => {
     setEdit((current) => {
       const base = current ?? (stored ? { doc: stored.document, base: stored.etag } : null);
-      return base ? { doc: change(structuredClone(base.doc)), base: base.base } : current;
+      if (!base) return current;
+      const next = change(structuredClone(base.doc));
+      // back to exactly the stored draft: no edit left behind (it would turn "unsaved" once the draft is re-read)
+      return stored && base.base === stored.etag && sameDoc(next, stored.document) ? null : { doc: next, base: base.base };
     });
   }, [stored]);
 

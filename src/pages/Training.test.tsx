@@ -18,12 +18,16 @@ const item = (text: string, extra: Record<string, unknown> = {}) => ({
   rule: "fallback", intent: "weather", score: 0.41, status: "pending", status_intent: null, ...extra,
 });
 
+const queueEngineWith = (extra: { draftGate?: () => Promise<void> | undefined }) => queueEngine({}, extra);
+
 /** A queue that remembers what the builder did, like the engine. */
-function queueEngine(options: { addReply?: Reply; truncated?: boolean } = {}) {
+function queueEngine(options: { addReply?: Reply; truncated?: boolean } = {},
+                     engineOptions: { draftGate?: () => Promise<void> | undefined } = {}) {
   const asked: URLSearchParams[] = [];
   const posts: { path: string; body: unknown; ifMatch: string | null }[] = [];
   const status = new Map<string, string>();
   const engine = botEngine({
+    ...engineOptions,
     extra: {
       [`GET ${B}/utterances`]: (init) => {
         const params = new URL(init.url, "http://x").searchParams;
@@ -38,7 +42,14 @@ function queueEngine(options: { addReply?: Reply; truncated?: boolean } = {}) {
         posts.push({ path: "add", body, ifMatch: headerOf(init, "If-Match") });
         if (options.addReply) return options.addReply;
         for (const t of body.texts) status.set(t, "added");
-        return { body: { bot: "sample", version: null, revision: 5, valid: true, errors: [], warnings: [] }, headers: { ETag: '"5"' } };
+        // like the engine: the stored draft gets the example and a new revision
+        const doc = structuredClone(engine.state.doc) as unknown as BotDoc;
+        const target = doc.intents?.[(JSON.parse(String(init.body)) as { intent: string }).intent];
+        if (target) target.examples.push(...body.texts);
+        engine.state.doc = doc as unknown as Record<string, unknown>;
+        engine.state.revision += 1;
+        return { body: { bot: "sample", version: null, revision: engine.state.revision, valid: true, errors: [], warnings: [] },
+                 headers: { ETag: `"${engine.state.revision}"` } };
       },
       [`POST ${B}/utterances/ignore`]: (init) => {
         const body = JSON.parse(String(init.body)) as { texts: string[] };
@@ -71,9 +82,10 @@ describe("학습대기", () => {
     expect([params.get("rule"), params.get("status"), params.get("intent")]).toEqual(["misunderstood", "pending", null]);
     expect(new Date(params.get("since") as string).getTime()).toBe(new Date(periodStart(7) as string).getTime());
     expect(within(first).getByLabelText(/을 넣을 블록/)).toHaveValue("weather"); // the closest block is preselected
+    const revision = state.revision;
     await userEvent.click(within(first).getByRole("button", { name: "예문으로 추가" }));
     expect(await screen.findByText(/‘양자컴퓨터로 날씨 예측해줘’을 ‘날씨 안내’의 예문으로 넣었어요/)).toBeInTheDocument();
-    expect(posts[0]).toEqual({ path: "add", body: { texts: ["양자컴퓨터로 날씨 예측해줘"], intent: "weather" }, ifMatch: `"${state.revision}"` });
+    expect(posts[0]).toEqual({ path: "add", body: { texts: ["양자컴퓨터로 날씨 예측해줘"], intent: "weather" }, ifMatch: `"${revision}"` });
     await waitFor(() => expect(screen.queryByText("양자컴퓨터로 날씨 예측해줘")).toBeNull()); // no longer pending
   });
 
@@ -229,5 +241,57 @@ describe("ML model helpers", () => {
     expect(confusableOf({ confusable: "x" })).toEqual([]);
     expect(confusableOf({ confusable: [{ a: "x", b: "y", similarity: 0.9, example_a: "", example_b: "" }, null, { a: "x" }] }))
       .toHaveLength(1);
+  });
+});
+
+describe("review fixes", () => {
+  it("a setting toggled on and off leaves no edit behind, so adding still works", async () => {
+    const { state } = queueEngine();
+    renderAt("/bots/sample/ml");
+    await userEvent.click(await screen.findByLabelText(/조사·어미만 다른 말/));
+    await userEvent.click(screen.getByLabelText(/조사·어미만 다른 말/));
+    await userEvent.click(screen.getByRole("link", { name: "학습" }));
+    const row = (await screen.findByText("양자컴퓨터로 날씨 예측해줘")).closest("li") as HTMLElement;
+    expect(screen.queryByText(/예문으로 추가하려면 먼저 저장하거나/)).toBeNull();
+    await userEvent.click(within(row).getByRole("button", { name: "예문으로 추가" }));
+    await screen.findByText(/예문으로 넣었어요/);
+    await waitFor(() => expect(state.reads).toBeGreaterThan(1)); // the builder re-read the changed draft
+    await waitFor(() => expect(screen.queryByText("양자컴퓨터로 날씨 예측해줘", { selector: ".queue-text" })).toBeNull());
+    expect(screen.queryByText(/예문으로 추가하려면 먼저 저장하거나/)).toBeNull();
+    expect(screen.getByRole("button", { name: "저장" })).toBeDisabled(); // nothing unsaved
+  });
+
+  it("waits for the reloaded draft before the next add, and rebuilds the test build", async () => {
+    let hold = false;
+    let release = () => {};
+    const { state, posts } = queueEngineWith({ draftGate: () => (hold ? new Promise<void>((r) => { release = r; }) : undefined) });
+    renderAt("/bots/sample/training");
+    const first = (await screen.findByText("양자컴퓨터로 날씨 예측해줘")).closest("li") as HTMLElement;
+    const second = screen.getByText("주식 추천").closest("li") as HTMLElement;
+    await userEvent.selectOptions(within(second).getByLabelText(/을 넣을 블록/), "help");
+    const builds = state.builds;
+    hold = true;
+    await userEvent.click(within(first).getByRole("button", { name: "예문으로 추가" }));
+    await screen.findByText(/예문으로 넣었어요/);
+    expect(within(second).getByRole("button", { name: "예문으로 추가" })).toBeDisabled(); // the old ETag would be refused
+    hold = false;
+    release();
+    await waitFor(() => expect(within(second).getByRole("button", { name: "예문으로 추가" })).toBeEnabled());
+    expect(posts.filter((p) => p.path === "add")).toHaveLength(1);
+    await waitFor(() => expect(state.builds).toBe(builds + 1)); // the test chat gets the new example
+  });
+
+  it("recomputes the period start at every fetch (a long session, midnight)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 10, 23, 59));
+    const { asked } = queueEngine();
+    renderAt("/bots/sample/training");
+    await screen.findByText("주식 추천");
+    await userEvent.selectOptions(screen.getByLabelText("기간"), "1");
+    await waitFor(() => expect(new Date(asked.at(-1)?.get("since") as string)).toEqual(new Date(2026, 10, 10, 0, 0)));
+    vi.setSystemTime(new Date(2026, 10, 11, 0, 1));
+    await userEvent.selectOptions(screen.getByLabelText("보기"), "all");
+    await waitFor(() => expect(new Date(asked.at(-1)?.get("since") as string)).toEqual(new Date(2026, 10, 11, 0, 0)));
+    vi.useRealTimers();
   });
 });

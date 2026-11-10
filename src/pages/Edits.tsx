@@ -1,5 +1,5 @@
 // 작업이력 menu: what each draft save changed, newest first. docs/builder-plan.md §6 B4.
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { type ChangeOut, formatDateTime, listEdits } from "../api/deploy";
 import { ErrorNotice } from "../components/ErrorNotice";
@@ -34,7 +34,7 @@ function describeChange(c: ChangeOut): string {
 export function Edits() {
   const { botId } = useDraft();
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const edits = useQuery({ queryKey: ["edits", botId, limit], queryFn: () => listEdits(botId, limit) });
+  const edits = useQuery({ queryKey: ["edits", botId, limit], queryFn: () => listEdits(botId, limit), placeholderData: keepPreviousData });
 
   return (
     <>

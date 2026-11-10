@@ -18,8 +18,8 @@ function DirtyToggle() {
   );
 }
 
-function renderDeploy() {
-  const client = createQueryClient();
+function renderDeploy(shared?: ReturnType<typeof createQueryClient>) {
+  const client = shared ?? createQueryClient();
   client.setDefaultOptions({ queries: { ...client.getDefaultOptions().queries, retryDelay: 0 } });
   return render(
     <Providers client={client}>
@@ -352,5 +352,66 @@ describe("training failures in Korean", () => {
     await userEvent.click(screen.getByRole("button", { name: "배포용 학습" }));
     expect(await screen.findByText("예문이 5개보다 적은 블록이 있어 배포용 학습을 할 수 없어요: coupon. 블록마다 예문을 5개 이상 넣어 주세요."))
       .toBeInTheDocument();
+  });
+});
+
+
+describe("review fixes", () => {
+  const LIVE_NEWEST = { ...SAMPLE_VERSIONS, live: "v3000000000a",
+    versions: SAMPLE_VERSIONS.versions.map((v) => ({ ...v, live: v.number === 3 })),
+    history: [{ version: "v3000000000a", number: 3, note: "rollback", deployed_at: "2026-11-10T02:00:00+00:00" }, ...SAMPLE_VERSIONS.history] };
+
+  it("preselects the newest version and says when it is already live", async () => {
+    engine({ versions: { body: LIVE_NEWEST } });
+    renderDeploy();
+    const select = await screen.findByLabelText("배포할 버전");
+    expect(select).toHaveValue("v3000000000a"); // never a silent downgrade to v2
+    expect(screen.getByText("이 버전은 지금 배포되어 있어요.")).toBeInTheDocument();
+    expect(screen.getByText("되돌리기")).toBeInTheDocument(); // the engine's "rollback" note in Korean
+  });
+
+  it("selects the version a training just made", async () => {
+    engine();
+    renderDeploy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "dirty" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "배포용 학습" }));
+    await screen.findByText("학습을 마쳤어요 · macro-F1 0.95");
+    expect(screen.getByLabelText("배포할 버전")).toHaveValue("v3000000000a");
+  });
+
+  it("keeps following a running training after leaving the page", async () => {
+    engine({ jobReply: { body: jobBody("running") } });
+    const client = createQueryClient();
+    const first = renderDeploy(client);
+    await waitFor(() => expect(screen.getByRole("button", { name: "dirty" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "배포용 학습" }));
+    await screen.findByText("배포용 학습을 진행하고 있어요…");
+    first.unmount();
+    renderDeploy(client);
+    expect(await screen.findByText("배포용 학습을 진행하고 있어요…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "학습 중…" })).toBeDisabled();
+  });
+
+  it.each([
+    [{ detail: "there is no earlier deployment to go back to" }, "되돌릴 이전 배포가 없어요"],
+    [{ detail: "the previous version has no trained model; train it first" }, "그 버전의 모델 파일이 없어요. 다시 학습한 뒤 배포해 주세요."],
+    [{ detail: { detail: "the previous version cannot run here", errors: ["unknown action 'x'"] } }, "그 버전은 지금 엔진에서 돌릴 수 없어요: unknown action 'x'"],
+  ])("explains a rollback refused with %j", async (body, text) => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    engine({ rollbackReply: { status: 409, body } });
+    renderDeploy();
+    await userEvent.click(await screen.findByRole("button", { name: "이전 버전으로 되돌리기" }));
+    expect(await screen.findByText(text)).toBeInTheDocument();
+  });
+
+  it("clears the deploy line after a rollback and the other way round", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    engine();
+    renderDeploy();
+    await userEvent.click(await screen.findByRole("button", { name: "배포" }));
+    await screen.findByText(/v\d 배포됨/);
+    await userEvent.click(screen.getByRole("button", { name: "이전 버전으로 되돌리기" }));
+    await screen.findByText("이전 버전으로 되돌렸어요");
+    expect(screen.queryByText(/v\d 배포됨/)).toBeNull();
   });
 });

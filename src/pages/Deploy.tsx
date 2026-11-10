@@ -25,6 +25,15 @@ const NOTE_MAX = 100;
 
 const fmtF1 = (f: number | null) => (f !== null ? f.toFixed(2) : "—");
 
+/** Why the engine refused a deploy or rollback (404/409), in Korean. */
+export function deployRefusal(error: ApiError): string {
+  if (/no earlier deployment/.test(error.message)) return "되돌릴 이전 배포가 없어요";
+  if (/no trained model/.test(error.message)) return "그 버전의 모델 파일이 없어요. 다시 학습한 뒤 배포해 주세요.";
+  if (/cannot run here/.test(error.message)) return `그 버전은 지금 엔진에서 돌릴 수 없어요: ${error.problems.join(", ") || error.message}`;
+  if (error.status === 404) return "그 버전을 찾지 못했어요. 버전 목록을 새로고쳐 주세요.";
+  return error.message;
+}
+
 /** A block's name for an intent id (falls back to the id). */
 function useIntentLabel(): (intent: string) => string {
   const { doc } = useDraft();
@@ -134,8 +143,13 @@ export function Deploy() {
   const queryClient = useQueryClient();
   const versions = useQuery({ queryKey: ["versions", botId], queryFn: () => listVersions(botId) });
 
-  const [jobId, setJobId] = useState<string | null>(null);
-  const train = useMutation({ mutationFn: () => startVersionJob(botId), onSuccess: (job) => setJobId(job.id) });
+  // kept in the query cache, not in the page: leaving 배포 and coming back keeps following the job
+  const jobKey = ["versionJobId", botId];
+  const jobId = useQuery({ queryKey: jobKey, queryFn: () => null as string | null, initialData: null, staleTime: Infinity, gcTime: Infinity }).data;
+  const train = useMutation({
+    mutationFn: () => startVersionJob(botId),
+    onSuccess: (job) => queryClient.setQueryData(jobKey, job.id),
+  });
   const job = useQuery({
     queryKey: ["versionJob", jobId],
     queryFn: () => getJob(jobId as string),
@@ -146,6 +160,7 @@ export function Deploy() {
   const trainResult = job.data?.status === "done" ? parseVersionJobResult(job.data.result as Record<string, unknown> | null) : null;
   const trainError = job.data?.status === "failed" ? parseVersionJobError(job.data.error as Record<string, unknown> | null) : null;
 
+  const [selectedVersion, setSelectedVersion] = useState("");
   const refreshedForJob = useRef<string | null>(null);
   useEffect(() => {
     if (job.data?.status === "done" && refreshedForJob.current !== job.data.id) {
@@ -155,16 +170,19 @@ export function Deploy() {
   }, [job.data, queryClient, botId]);
 
   const list = versions.data?.versions ?? [];
-  const defaultVersion = list.find((v) => !v.live)?.version ?? list[0]?.version ?? "";
-  const [selectedVersion, setSelectedVersion] = useState("");
+  const defaultVersion = list[0]?.version ?? ""; // the newest: never a silent downgrade
   const [note, setNote] = useState("");
-  const effectiveVersion = selectedVersion || defaultVersion;
+  const made = job.data?.status === "done" ? job.data.result?.version : undefined; // what the training just made
+  const trained = typeof made === "string" && list.some((v) => v.version === made) ? made : "";
+  const effectiveVersion = selectedVersion || trained || defaultVersion;
+  const selectedLive = list.find((v) => v.version === effectiveVersion)?.live ?? false;
   const [deployedMessage, setDeployedMessage] = useState<string | null>(null);
   const deploy = useMutation({
     mutationFn: () => deployVersion(botId, effectiveVersion, note),
     onSuccess: () => {
       const deployedNumber = list.find((v) => v.version === effectiveVersion)?.number;
       setDeployedMessage(deployedNumber !== undefined ? `v${deployedNumber} 배포됨` : "배포됐어요");
+      setRollbackMessage(null);
       setNote("");
       setSelectedVersion("");
       void queryClient.invalidateQueries({ queryKey: ["versions", botId] });
@@ -178,6 +196,7 @@ export function Deploy() {
     mutationFn: () => rollbackVersion(botId),
     onSuccess: () => {
       setRollbackMessage("이전 버전으로 되돌렸어요");
+      setDeployedMessage(null);
       void queryClient.invalidateQueries({ queryKey: ["versions", botId] });
     },
   });
@@ -253,6 +272,7 @@ export function Deploy() {
               <select id="deploy-version" className="input" value={effectiveVersion} onChange={(e) => setSelectedVersion(e.target.value)}>
                 {list.map((v) => <option key={v.version} value={v.version}>v{v.number}{v.live ? " · 라이브" : ""}</option>)}
               </select>
+              {selectedLive && <p className="help">이 버전은 지금 배포되어 있어요.</p>}
             </div>
             <div className="field">
               <label htmlFor="deploy-note">메모 (선택)</label>
@@ -272,7 +292,7 @@ export function Deploy() {
         <p className="status" role="status">{deployedMessage ?? "아직 배포하지 않았어요"}</p>
         {deploy.isError && (
           deploy.error instanceof ApiError && (deploy.error.status === 404 || deploy.error.status === 409)
-            ? <p className="notice" data-tone="error" role="alert">{deploy.error.message}</p>
+            ? <p className="notice" data-tone="error" role="alert">{deployRefusal(deploy.error)}</p>
             : <ErrorNotice error={deploy.error} onRetry={() => deploy.mutate()} />
         )}
       </section>
@@ -288,7 +308,7 @@ export function Deploy() {
         <p className="status" role="status">{rollbackMessage ?? "아직 되돌리지 않았어요"}</p>
         {rollback.isError && (
           rollback.error instanceof ApiError && rollback.error.status === 409
-            ? <p className="notice" data-tone="error" role="alert">되돌릴 이전 배포가 없어요</p>
+            ? <p className="notice" data-tone="error" role="alert">{deployRefusal(rollback.error)}</p>
             : <ErrorNotice error={rollback.error} onRetry={() => rollback.mutate()} />
         )}
       </section>
@@ -306,7 +326,7 @@ export function Deploy() {
               {history.map((h, i) => (
                 <tr key={`${h.version}-${i}`}>
                   <td data-label="버전" className="mono">v{h.number}</td>
-                  <td data-label="메모">{h.note || "메모 없음"}</td>
+                  <td data-label="메모">{h.note === "rollback" ? "되돌리기" : h.note || "메모 없음"}</td>
                   <td data-label="배포 시각">{formatDateTime(h.deployed_at)}</td>
                   <td data-label="상태">{h.version === versions.data?.live && <span className="chip" data-tone="live">라이브</span>}</td>
                 </tr>

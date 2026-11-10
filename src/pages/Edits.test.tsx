@@ -107,3 +107,23 @@ describe("작업이력", () => {
     expect(screen.queryByRole("button", { name: "더 보기" })).not.toBeInTheDocument();
   });
 });
+
+
+describe("review fixes", () => {
+  it("keeps the shown history while more is loading", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const page = (n: number) => Array.from({ length: n }, (_, i) => ({ revision: 100 - i, saved_at: "2026-11-10T00:00:00+00:00",
+      changes: [{ area: "block" as const, action: "changed" as const, id: `b${i}`, label: "", examples_added: null, examples_removed: null }] }));
+    engine({
+      "GET /v1/builder/bots/sample/edits?limit=50": () => ({ body: { bot: "sample", items: page(50) } }),
+      "GET /v1/builder/bots/sample/edits?limit=100": async () => { await gate; return { body: { bot: "sample", items: page(60) } }; },
+    });
+    renderEdits();
+    await screen.findByText("블록 b0 수정");
+    await userEvent.click(screen.getByRole("button", { name: "더 보기" }));
+    expect(screen.getByText("블록 b49 수정")).toBeInTheDocument(); // not replaced by a loading skeleton
+    release();
+    expect(await screen.findByText("블록 b59 수정")).toBeInTheDocument();
+  });
+});

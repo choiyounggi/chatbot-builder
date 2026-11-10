@@ -63,6 +63,7 @@ export interface BotEngineOptions {
   open?: (build: string, session: string) => Reply; // test open replies (default: no welcome messages)
   putGate?: Promise<void>; // PUT waits for this (to edit while a save is in flight)
   jobsForgotten?: boolean; // GET job answers 404 (the engine restarted)
+  draftGate?: () => Promise<void> | undefined; // GET draft waits for this (to act while a reload is in flight)
   extra?: Record<string, Handler>; // more routes ("METHOD /path?query" matched without the query too)
   buildResult?: Record<string, unknown>; // more fields in a done test-build job's result (e.g. confusable)
 }
@@ -85,7 +86,8 @@ export function botEngine(options: BotEngineOptions = {}) {
   const job = (id: string) => ({ id, kind: "test_build", bot: "sample", created_at: "2026-11-10T00:00:00+00:00", ...state.jobs.get(id) });
   const routes: Record<string, Handler> = {
     "GET /v1/builder/bots": () => ({ body: { bots: [{ ...SAMPLE, label: String(state.doc.label ?? ""), draft_revision: state.revision }] } }),
-    "GET /v1/builder/bots/sample/draft": () => {
+    "GET /v1/builder/bots/sample/draft": async () => {
+      await options.draftGate?.();
       state.reads += 1;
       if (options.failDraftAfter !== undefined && state.reads > options.failDraftAfter) return { status: 500, body: { detail: "internal error" } };
       return { body: state.doc, headers: { ETag: `"${state.revision}"` } };
