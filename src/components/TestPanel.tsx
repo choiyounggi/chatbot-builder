@@ -26,6 +26,11 @@ export function TestPanel() {
   const currentBuild = build.status === "ready" ? build.build : null;
   const seen = useRef<string | null>(currentBuild);
   const opened = useRef<string | null>(null);
+  const chat = useRef<HTMLOListElement>(null);
+  // the chat scrolls on its own: keep the newest line in view (cards make lines tall)
+  useEffect(() => {
+    if (chat.current) chat.current.scrollTop = chat.current.scrollHeight;
+  }, [lines.length]);
 
   useEffect(() => {
     if (currentBuild && seen.current && currentBuild !== seen.current) {
@@ -83,7 +88,7 @@ export function TestPanel() {
     <div className="test-panel">
       <BuildStatus />
       <p className="visually-hidden" aria-live="polite">{lastBot?.message.text ?? ""}</p>
-      <ol className="chat" aria-label="테스트 대화">
+      <ol className="chat" aria-label="테스트 대화" ref={chat}>
         {lines.map((line, i) => (
           <li key={i} className={`bubble bubble--${line.from}`}>
             {line.from === "bot" ? (

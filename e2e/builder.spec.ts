@@ -70,5 +70,5 @@ test("a card reply shows in the test chat, and its block buttons start the block
   await expect(chat.locator("dd", { hasText: /^block$/ }).last()).toBeVisible();
 
   await chat.getByRole("button", { name: "지금 시각" }).click(); // the card's block button
-  await expect(chat.getByText(/^지금은 .+예요\.$/)).toBeVisible();
+  await expect(chat.getByText(/^지금은 .+에요\.$/)).toBeVisible(); // "…시예요." or "…분이에요."
 });

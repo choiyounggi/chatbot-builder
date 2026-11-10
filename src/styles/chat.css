@@ -19,4 +19,4 @@
 .rich-list__desc { margin: 0; color: var(--color-muted); font-size: var(--text-xs); }
 
 .rich-carousel { display: flex; gap: var(--space-xs); max-width: 100%; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: var(--space-2xs); }
-.rich-carousel__item { flex: 0 0 auto; width: 14rem; max-width: 80vw; scroll-snap-align: start; border: var(--rule-width) solid var(--color-rule); border-radius: var(--radius-md); padding: var(--space-xs); }
+.rich-carousel__item { flex: 0 0 auto; width: min(14rem, 85%); /* the next card peeks in: there is more to scroll */ scroll-snap-align: start; border: var(--rule-width) solid var(--color-rule); border-radius: var(--radius-md); padding: var(--space-xs); }

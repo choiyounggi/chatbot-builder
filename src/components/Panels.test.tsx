@@ -78,6 +78,22 @@ describe("bot test panel", () => {
     expect(new Set(state.chats.map((c) => c.session)).size).toBe(1);
   });
 
+  it("keeps the newest line in view: the chat scrolls to the bottom after each reply", async () => {
+    botEngine();
+    // jsdom has no layout: give every chat list a fixed content height
+    const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(900);
+    renderAt("/bots/sample/settings");
+    const panel = await open("봇테스트");
+    await userEvent.click(within(panel).getByRole("button", { name: "지금 저장된 초안으로 빌드" }));
+    await within(panel).findByText(/준비됨/);
+    const list = within(panel).getByRole("list", { name: "테스트 대화" });
+    list.scrollTop = 0;
+    await userEvent.type(within(panel).getByLabelText("테스트할 발화"), "안녕{Enter}");
+    await chat(panel).findByText("echo: 안녕");
+    expect(list.scrollTop).toBe(900);
+    height.mockRestore();
+  });
+
   it("switches to the new build after a save and starts a new conversation", async () => {
     const { state } = botEngine();
     renderAt("/bots/sample/settings");
