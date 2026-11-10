@@ -213,7 +213,9 @@ function BlockEditor({ id, blocks, embedded = false }: { id: string; blocks: Blo
               <input type="checkbox" checked={p.required} aria-label={`${p.name} 필수`}
                      onChange={(e) => change((b) => ({ ...b, params: b.params.map((x) => x.name === p.name
                        ? { ...x, required: e.target.checked, default: e.target.checked ? null : x.default,
-                           ask: x.ask ?? textReply(newAsk(d(), b, x.name)) } : x) }))} /> 필수
+                           // a required parameter needs a question; an optional one keeps it only if it says something
+                           ask: e.target.checked ? x.ask ?? textReply(newAsk(d(), b, x.name))
+                             : x.ask && x.ask.texts.some((t) => t.trim()) ? x.ask : null } : x) }))} /> 필수
             </label>
             {p.required ? (
               <>

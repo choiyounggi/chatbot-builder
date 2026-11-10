@@ -110,6 +110,9 @@ describe("bot test panel", () => {
     await chat(panel).findByText("echo: 또");
     expect(state.chats[0]?.build).not.toBe(state.chats[1]?.build);
     expect(state.chats[0]?.session).not.toBe(state.chats[1]?.session);
+    // each build opened its own session once; the old session is never opened with the new build
+    expect(state.opens.map((o) => `${o.build}:${o.session}`)).toEqual([
+      `${state.chats[0]?.build}:${state.chats[0]?.session}`, `${state.chats[1]?.build}:${state.chats[1]?.session}`]);
   });
 
   it("offers a rebuild when the build expired", async () => {

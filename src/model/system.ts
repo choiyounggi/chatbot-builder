@@ -1,7 +1,7 @@
 // The bot's system blocks (docs/builder-plan.md §2.5): welcome, fallback, escape, and the
 // conversation settings (re-ask limit, idle timeout). Every function returns a new document.
 import { newBlockId, responseRefs, textReply, writeBlock } from "./blocks";
-import { type BotDoc, newId, type SystemDoc, without } from "./doc";
+import { type BotDoc, newId, richOf, type SystemDoc, without } from "./doc";
 
 export const DEFAULT_MAX_ATTEMPTS = 3; // chatcore Settings.max_attempts
 export const TIMEOUT_NOTICE = "timeout_notice"; // the response the idle-timeout notice is written to
@@ -39,20 +39,43 @@ export function setEscape(doc: BotDoc, phrases: string[], scenario: string | nul
   return withSystem(doc, (s) => ({ ...s, escape: clean.length ? { phrases: clean, ...(scenario ? { scenario } : {}) } : null }));
 }
 
-/** Idle timeout in minutes (null: off) and the notice said when a conversation in progress is dropped
- * (blank: the engine's "restarted" response). The notice is a plain text response (no variables). */
-export function setTimeoutRule(doc: BotDoc, minutes: number | null, notice: string): BotDoc {
+/** Is `id` used by anything but the timeout notice (a step, a question, the engine itself)? */
+function sharedResponse(doc: BotDoc, id: string): boolean {
+  return responseRefs({ ...doc, system: { ...doc.system, timeout: null } }).has(id);
+}
+
+/** The timeout notice can be edited here only when it is a plain text response nothing else uses. */
+function noticeEditable(doc: BotDoc): boolean {
+  const id = doc.system?.timeout?.notice;
+  if (!id) return true;
+  const r = doc.responses[id];
+  return !sharedResponse(doc, id) && (!r || (r.variants == null && richOf(r) === null && typeof r.text === "string"));
+}
+
+/** Idle timeout in minutes (1-1440), or null for off. The notice response is left exactly as it is;
+ * turning the timeout off also drops a notice response nothing else uses. */
+export function setTimeoutMinutes(doc: BotDoc, minutes: number | null): BotDoc {
   if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440)) {
     throw new RangeError("minutes must be a whole number from 1 to 1440");
   }
-  const text = notice.trim();
   const old = doc.system?.timeout?.notice ?? null;
-  const responseId = old ?? (doc.responses[TIMEOUT_NOTICE] ? newId(TIMEOUT_NOTICE, Object.keys(doc.responses)) : TIMEOUT_NOTICE);
-  let next = withSystem(doc, (s) => ({
-    ...s, timeout: minutes === null ? null : { minutes, ...(text ? { notice: responseId } : {}) },
-  }));
-  if (minutes !== null && text) next.responses = { ...next.responses, [responseId]: { text } };
+  let next = withSystem(doc, (s) => ({ ...s, timeout: minutes === null ? null : { ...s.timeout, minutes } }));
   if (old && !responseRefs(next).has(old)) next = { ...next, responses: without(next.responses, old) };
+  return next;
+}
+
+/** The notice said when a conversation in progress is dropped, as typed ("" or blank: the engine's
+ * "restarted" response). A shared or non-text notice response is never rewritten: the text goes to a
+ * response of its own. */
+export function setTimeoutNotice(doc: BotDoc, text: string): BotDoc {
+  const timeout = doc.system?.timeout;
+  if (!timeout) throw new Error("the timeout is off");
+  const old = timeout.notice ?? null;
+  const reuse = old !== null && noticeEditable(doc);
+  const responseId = reuse ? old : doc.responses[TIMEOUT_NOTICE] ? newId(TIMEOUT_NOTICE, Object.keys(doc.responses)) : TIMEOUT_NOTICE;
+  let next = withSystem(doc, (s) => ({ ...s, timeout: { minutes: timeout.minutes, ...(text.trim() ? { notice: responseId } : {}) } }));
+  if (text.trim()) next.responses = { ...next.responses, [responseId]: { ...(reuse ? doc.responses[responseId] : {}), text } };
+  if (old && reuse && !responseRefs(next).has(old)) next = { ...next, responses: without(next.responses, old) }; // ours only
   return next;
 }
 
@@ -70,6 +93,7 @@ export interface SystemView {
   escapeScenario: string | null;
   timeoutMinutes: number | null;
   timeoutNotice: string; // the notice text ("" = the engine's restarted response)
+  timeoutNoticeEditable: boolean; // false: the notice response is shared or not plain text (edit it where it is used)
   maxAttempts: number;
 }
 
@@ -82,6 +106,7 @@ export function readSystem(doc: BotDoc): SystemView {
     escapeScenario: doc.system?.escape?.scenario ?? null,
     timeoutMinutes: doc.system?.timeout?.minutes ?? null,
     timeoutNotice: noticeText ?? "",
+    timeoutNoticeEditable: noticeEditable(doc),
     maxAttempts: typeof doc.settings?.max_attempts === "number" ? doc.settings.max_attempts : DEFAULT_MAX_ATTEMPTS,
   };
 }

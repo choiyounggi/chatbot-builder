@@ -116,10 +116,10 @@ export function writeResponse(doc: BotDoc, reply: Reply): void {
 function slotDoc(before: SlotDoc | undefined, param: Param): SlotDoc {
   const slot: SlotDoc = { ...before, entity: param.entity };
   if (param.ask) slot.ask = param.ask.response;
-  else delete slot.ask;
+  else if (slot.ask !== null) delete slot.ask; // an explicit null stays
   if (!param.required || before?.required !== undefined) slot.required = param.required;
   if (param.default !== null && param.default !== "" && !param.required) slot.default = param.default;
-  else delete slot.default;
+  else if (slot.default !== null || param.required === false) delete slot.default;
   return slot;
 }
 
@@ -130,7 +130,7 @@ export function writeBlock(doc: BotDoc, block: Block): BotDoc {
   const scenario: ScenarioDoc = { ...before, steps: block.steps.map((s) => structuredClone(s)) };
   if (block.label || before?.label !== undefined) scenario.label = block.label;
   if (block.group.trim()) scenario.group = block.group; // as typed: trimming here would eat the space being typed
-  else delete scenario.group;
+  else if (scenario.group !== null) delete scenario.group;
   if (block.params.length > 0 || before?.slots !== undefined) {
     scenario.slots = Object.fromEntries(block.params.map((p) => [p.name, slotDoc(before?.slots?.[p.name], p)]));
   }
@@ -245,7 +245,10 @@ export function responseRefs(doc: BotDoc): Set<string> {
   const refs = new Set<string>(REQUIRED_RESPONSES);
   for (const scenario of Object.values(doc.scenarios)) {
     for (const step of scenario.steps) if ("respond" in step) refs.add(step.respond);
-    for (const slot of Object.values(scenario.slots ?? {})) if (slot.ask) refs.add(slot.ask);
+    for (const slot of Object.values(scenario.slots ?? {})) {
+      if (slot.ask) refs.add(slot.ask);
+      if (slot.validation?.fail) refs.add(slot.validation.fail);
+    }
     if (scenario.on_error) refs.add(scenario.on_error);
   }
   const notice = doc.system?.timeout?.notice;
@@ -274,14 +277,20 @@ export function callersOf(doc: BotDoc, id: string): string[] {
       ("call" in step && step.call === id)
       || ("branch" in step && (Object.values(step.branch.cases).includes(id) || step.branch.default === id))))
     .map(([sid]) => sid);
-  const buttons = Object.entries(doc.responses).filter(([, r]) => blockTargets(r).includes(id)).map(([rid]) => `버튼(응답 ${rid})`);
+  // responses that go away with the block (used by it alone) do not count: its own "다시" button is fine
+  const others = responseRefs({ ...doc, scenarios: without(doc.scenarios, id) });
+  const own = [...responseRefs({ ...doc, scenarios: { [id]: doc.scenarios[id] ?? { steps: [] } }, system: {} })].filter((r) => !others.has(r));
+  const buttons = Object.entries(doc.responses).filter(([rid, r]) => !own.includes(rid) && blockTargets(r).includes(id))
+    .map(([rid]) => `버튼(응답 ${rid})`);
   const system = [...(doc.system?.welcome === id ? ["웰컴"] : []), ...(doc.system?.escape?.scenario === id ? ["탈출"] : [])];
   return [...steps, ...buttons, ...system];
 }
 
-/** Scenarios the welcome / escape settings run: shown under 기본 시나리오, not in the block list. */
+/** Blocks only the welcome / escape settings start (no trigger): edited under 기본 시나리오, not listed
+ * with the other blocks. A trigger block chosen there stays in the list too. */
 export function systemScenarios(doc: BotDoc): Set<string> {
-  return new Set([doc.system?.welcome, doc.system?.escape?.scenario].filter((s): s is string => !!s));
+  return new Set([doc.system?.welcome, doc.system?.escape?.scenario]
+    .filter((s): s is string => !!s && !!doc.scenarios[s] && !doc.scenarios[s]?.trigger));
 }
 
 /** Labels shown on a response's quick replies (for previews and warnings). */

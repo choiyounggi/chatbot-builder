@@ -26,6 +26,7 @@ export function TestPanel() {
   const currentBuild = build.status === "ready" ? build.build : null;
   const seen = useRef<string | null>(currentBuild);
   const opened = useRef<string | null>(null);
+  const retired = useRef<string | null>(null); // the session a new build just replaced: never open it
   const chat = useRef<HTMLOListElement>(null);
   // the chat scrolls on its own: keep the newest line in view (cards make lines tall)
   useEffect(() => {
@@ -34,18 +35,20 @@ export function TestPanel() {
 
   useEffect(() => {
     if (currentBuild && seen.current && currentBuild !== seen.current) {
+      retired.current = session;
       setSession(newSession()); // a new build starts a new conversation
       setError(null);
       setLines((l) => [...l.map((line) => (line.from === "bot" ? { ...line, interactive: false } : line)), // old buttons belong to the old session
         { from: "note", text: "새 테스트 빌드로 바꿨어요. 대화를 새로 시작해요." }]);
     }
     seen.current = currentBuild ?? seen.current;
-  }, [currentBuild]);
+  }, [currentBuild, session]);
 
   // The conversation starts with the bot's welcome messages (if any). Guarded by build+session so
   // StrictMode's double-invoked effect, a new build, and "새 대화" each open exactly once.
   useEffect(() => {
     if (!currentBuild) return;
+    if (session === retired.current) return; // this render still has the old session; the new one follows
     const key = `${currentBuild}:${session}`;
     if (opened.current === key) return;
     opened.current = key;

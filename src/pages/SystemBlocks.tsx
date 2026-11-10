@@ -4,7 +4,7 @@ import { type BlockOption, ReplyEditor } from "../components/ReplyEditor";
 import { useDraft } from "../draft/DraftContext";
 import { replyOf, writeResponse } from "../model/blocks";
 import type { BotDoc } from "../model/doc";
-import { createWelcome, readSystem, setEscape, setMaxAttempts, setTimeoutRule, setWelcome } from "../model/system";
+import { createWelcome, readSystem, setEscape, setMaxAttempts, setTimeoutMinutes, setTimeoutNotice, setWelcome } from "../model/system";
 
 export const SYSTEM_PAGES = [
   { id: "_welcome", label: "웰컴", meta: "대화를 열면" },
@@ -25,7 +25,7 @@ export function SystemEditor({ page, blocks, renderBlock }: {
       <div className="editor-head"><h2>{title}</h2><span className="chip">기본 시나리오</span></div>
       {page === "_welcome" && <Welcome renderBlock={renderBlock} />}
       {page === "_fallback" && <Fallback blocks={blocks} />}
-      {page === "_escape" && <Escape blocks={blocks} />}
+      {page === "_escape" && <Escape blocks={blocks} renderBlock={renderBlock} />}
       {page === "_settings" && <Settings />}
     </section>
   );
@@ -60,15 +60,15 @@ function Fallback({ blocks }: { blocks: BlockOption[] }) {
       <ReplyEditor reply={reply} index={0} blocks={blocks} textOnly
                    onChange={(next) => draft.update((d) => { writeResponse(d, next); return d; })} />
       {examples && (
-        <PhraseList title="모르는 질문 예시" help="봇이 답하지 않아야 할 말이에요. 학습할 때 '모르는 질문'으로 배워요."
-                    inputLabel="새 모르는 질문" items={examples}
+        <PhraseList title="모르는 질문 예시" help="봇이 답하지 않아야 할 말이에요. 학습할 때 '모르는 질문'으로 배워요. 하나는 남겨 둬야 해요."
+                    inputLabel="새 모르는 질문" items={examples} minItems={1}
                     onChange={(items) => draft.update((d) => ({ ...d, intents: { ...d.intents, out_of_scope: { ...d.intents?.out_of_scope, examples: items } } }))} />
       )}
     </>
   );
 }
 
-function Escape({ blocks }: { blocks: BlockOption[] }) {
+function Escape({ blocks, renderBlock }: { blocks: BlockOption[]; renderBlock: (id: string) => ReactNode }) {
   const draft = useDraft();
   const doc = draft.doc as BotDoc;
   const { escapePhrases, escapeScenario } = readSystem(doc);
@@ -93,6 +93,7 @@ function Escape({ blocks }: { blocks: BlockOption[] }) {
         <ReplyEditor reply={cancelled} index={0} blocks={blocks} textOnly
                      onChange={(next) => draft.update((d) => { writeResponse(d, next); return d; })} />
       )}
+      {escapePhrases.length > 0 && escapeScenario && doc.scenarios[escapeScenario] && renderBlock(escapeScenario)}
     </>
   );
 }
@@ -101,10 +102,11 @@ function Settings() {
   const draft = useDraft();
   const doc = draft.doc as BotDoc;
   const system = readSystem(doc);
-  const [notice, setNotice] = useState(system.timeoutNotice);
-  // typed text of the minutes field: "" or "0" while retyping is kept here, only 1-1440 reaches the draft
-  const [minutesText, setMinutesText] = useState(String(system.timeoutMinutes ?? 30));
-  const minutesValid = /^\d+$/.test(minutesText) && Number(minutesText) >= 1 && Number(minutesText) <= 1440;
+  // what is being typed in the minutes field while it is not a valid number (null: show the draft's value)
+  const [minutesText, setMinutesText] = useState<string | null>(null);
+  const shown = minutesText ?? String(system.timeoutMinutes ?? 30);
+  const minutesValid = /^\d+$/.test(shown) && Number(shown) >= 1 && Number(shown) <= 1440;
+  const notice = doc.system?.timeout?.notice;
   return (
     <>
       <div className="field">
@@ -118,36 +120,38 @@ function Settings() {
       <label className="check">
         <input type="checkbox" checked={system.timeoutMinutes !== null}
                onChange={(e) => {
-                 setMinutesText("30");
-                 draft.update((d) => setTimeoutRule(d, e.target.checked ? 30 : null, notice));
+                 setMinutesText(null);
+                 draft.update((d) => setTimeoutMinutes(d, e.target.checked ? 30 : null));
                }} /> 대기 시간이 지나면 처음부터
       </label>
       {system.timeoutMinutes !== null && (
         <>
           <div className="field">
             <label htmlFor="timeout-minutes">대기 시간(분)</label>
-            <input id="timeout-minutes" className="input" type="number" min={1} max={1440} step={1} value={minutesText}
+            <input id="timeout-minutes" className="input" type="number" min={1} max={1440} step={1} value={shown}
                    aria-invalid={!minutesValid} aria-describedby="timeout-minutes-help"
                    onChange={(e) => {
-                     setMinutesText(e.target.value);
                      const minutes = Number(e.target.value);
                      if (/^\d+$/.test(e.target.value) && minutes >= 1 && minutes <= 1440) {
-                       draft.update((d) => setTimeoutRule(d, minutes, notice));
-                     }
+                       setMinutesText(null);
+                       draft.update((d) => setTimeoutMinutes(d, minutes));
+                     } else setMinutesText(e.target.value);
                    }} />
             <p id="timeout-minutes-help" className="help" data-tone={minutesValid ? undefined : "warn"}>
               {minutesValid ? "마지막 말 뒤로 이만큼 지나면 다음 말에서 대화를 처음부터 시작해요(1~1440분)."
-                : `1~1440 사이의 정수를 넣어 주세요. 지금은 ${system.timeoutMinutes ?? 30}분으로 저장돼요.`}
+                : `1~1440 사이의 정수를 넣어 주세요. 지금은 ${system.timeoutMinutes}분으로 저장돼요.`}
             </p>
           </div>
           <div className="field">
             <label htmlFor="timeout-notice">시간 초과 안내</label>
-            <input id="timeout-notice" className="input" value={notice} placeholder={doc.responses.restarted?.text ?? ""}
-                   onChange={(e) => {
-                     setNotice(e.target.value);
-                     draft.update((d) => setTimeoutRule(d, readSystem(d).timeoutMinutes, e.target.value));
-                   }} />
-            <p className="help">진행 중이던 대화가 있었을 때만 말해요. 비우면 "처음부터 다시" 응답을 써요. {"{{ }}"} 변수는 쓸 수 없어요.</p>
+            <input id="timeout-notice" className="input" value={system.timeoutNoticeEditable ? system.timeoutNotice : ""}
+                   placeholder={doc.responses.restarted?.text ?? ""}
+                   onChange={(e) => draft.update((d) => setTimeoutNotice(d, e.target.value))} />
+            <p className="help">
+              {system.timeoutNoticeEditable
+                ? `진행 중이던 대화가 있었을 때만 말해요. 비우면 "처음부터 다시" 응답을 써요. {{ }} 변수는 쓸 수 없어요.`
+                : `지금은 응답 ${notice}을(를) 써요. 다른 곳에서도 쓰거나 글 하나가 아니라서 여기서는 고치지 않아요. 여기에 쓰면 이 안내만의 응답을 새로 만들어요.`}
+            </p>
           </div>
         </>
       )}
@@ -155,8 +159,8 @@ function Settings() {
   );
 }
 
-function PhraseList({ title, help, inputLabel, items, onChange }: {
-  title: string; help: string; inputLabel: string; items: string[]; onChange: (items: string[]) => void;
+function PhraseList({ title, help, inputLabel, items, onChange, minItems = 0 }: {
+  title: string; help: string; inputLabel: string; items: string[]; onChange: (items: string[]) => void; minItems?: number;
 }) {
   const [text, setText] = useState("");
   const add = (event: FormEvent) => {
@@ -179,8 +183,10 @@ function PhraseList({ title, help, inputLabel, items, onChange }: {
         {items.map((item, i) => (
           <li key={i}>
             <span>{item}</span>
-            <button type="button" className="btn btn--quiet" aria-label={`"${item}" 삭제`}
-                    onClick={() => onChange(items.filter((_, j) => j !== i))}>삭제</button>
+            {items.length > minItems && (
+              <button type="button" className="btn btn--quiet" aria-label={`"${item}" 삭제`}
+                      onClick={() => onChange(items.filter((_, j) => j !== i))}>삭제</button>
+            )}
           </li>
         ))}
       </ul>

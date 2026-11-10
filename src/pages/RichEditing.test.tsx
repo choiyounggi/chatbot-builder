@@ -195,7 +195,8 @@ describe("기본 시나리오", () => {
     expect(doc.system).toEqual({ escape: { phrases: ["나가기"] } });
     expect(doc.responses.cancelled?.text).toMatch(/다음에 또 불러 주세요\.$/);
     await userEvent.selectOptions(within(page).getByLabelText("끝낸 뒤 실행할 블록"), "show_help");
-    expect(within(page).queryByLabelText("응답 1 문구 1")).toBeNull();
+    expect(within(page).getByRole("region", { name: "블록 도움말" })).toBeInTheDocument(); // its editor is shown here
+    expect(within(screen.getByRole("region", { name: "블록 목록" })).getByRole("link", { name: /도움말/ })).toBeInTheDocument(); // and still listed
     await userEvent.click(within(page).getByRole("button", { name: '"나가기" 삭제' }));
     doc = await savedAfter(state, 6);
     expect(doc.system).toBeUndefined(); // no phrases: escape is off
@@ -232,5 +233,57 @@ describe("기본 시나리오", () => {
       "웰컴대화를 열면", "폴백못 알아들으면", "탈출진행 중인 대화 끝내기", "시나리오 설정되묻기·대기 시간"]);
     await userEvent.click(within(list).getByRole("link", { name: /폴백/ }));
     expect(await screen.findByRole("region", { name: "기본 시나리오 폴백" })).toBeInTheDocument();
+  });
+});
+
+describe("review regressions", () => {
+  it("settings follow the draft after the changes are discarded", async () => {
+    botEngine();
+    renderAt("/bots/sample/scenarios/_settings");
+    const page = await editorOf();
+    await userEvent.click(within(page).getByLabelText("대기 시간이 지나면 처음부터"));
+    await userEvent.type(within(page).getByLabelText("시간 초과 안내"), "B 안내");
+    await userEvent.clear(within(page).getByLabelText("대기 시간(분)")); // an unfinished number is pending
+    await userEvent.click(screen.getByRole("button", { name: "변경 취소" }));
+    expect(within(page).queryByLabelText("시간 초과 안내")).toBeNull(); // the draft has no timeout again
+    await userEvent.click(within(page).getByLabelText("대기 시간이 지나면 처음부터"));
+    expect(within(page).getByLabelText("시간 초과 안내")).toHaveValue(""); // not the discarded "B 안내"
+    expect(within(page).getByLabelText("대기 시간(분)")).toHaveValue(30);
+  });
+
+  it("a shared notice response is not edited here, and typing gives the notice its own response", async () => {
+    const doc = structuredClone(sample) as unknown as BotDoc;
+    doc.system = { timeout: { minutes: 10, notice: "restarted" } };
+    const { state } = botEngine({ doc: doc as unknown as Record<string, unknown> });
+    renderAt("/bots/sample/scenarios/_settings");
+    const page = await editorOf();
+    expect(within(page).getByText(/지금은 응답 restarted을\(를\) 써요/)).toBeInTheDocument();
+    await userEvent.type(within(page).getByLabelText("시간 초과 안내"), "늦었어요");
+    const after = await savedAfter(state);
+    expect(after.responses.restarted).toEqual((sample as unknown as BotDoc).responses.restarted);
+    expect(after.system).toEqual({ timeout: { minutes: 10, notice: "timeout_notice" } });
+  });
+
+  it("making a parameter optional and required again does not invent an empty question", async () => {
+    const doc = structuredClone(sample) as unknown as BotDoc;
+    doc.scenarios.greet = { ...doc.scenarios.greet, steps: doc.scenarios.greet?.steps ?? [],
+      slots: { who: { entity: "sys.text", required: false } } };
+    botEngine({ doc: doc as unknown as Record<string, unknown> });
+    renderAt("/bots/sample/scenarios/greet");
+    const editor = await editorOf();
+    await userEvent.click(within(editor).getByLabelText("who 필수"));
+    expect(screen.getByRole("button", { name: "저장" })).toBeEnabled(); // required now, with a question to fill in
+    await userEvent.click(within(editor).getByLabelText("who 필수"));
+    expect(screen.getByRole("button", { name: "저장" })).toBeDisabled(); // back to exactly the stored draft: no empty question
+  });
+
+  it("the last out-of-scope example cannot be deleted", async () => {
+    const doc = structuredClone(sample) as unknown as BotDoc;
+    doc.intents = { ...doc.intents, out_of_scope: { examples: ["주식 추천해줘"] } };
+    botEngine({ doc: doc as unknown as Record<string, unknown> });
+    renderAt("/bots/sample/scenarios/_fallback");
+    const page = await editorOf();
+    expect(within(page).getByText("주식 추천해줘")).toBeInTheDocument();
+    expect(within(page).queryByRole("button", { name: '"주식 추천해줘" 삭제' })).toBeNull();
   });
 });

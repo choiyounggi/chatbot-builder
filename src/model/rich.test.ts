@@ -7,7 +7,7 @@ import {
 } from "./blocks";
 import { blockTargets, type BotDoc, quickReplyBlock, richOf, withRich } from "./doc";
 import {
-  createWelcome, DEFAULT_MAX_ATTEMPTS, readSystem, setEscape, setMaxAttempts, setTimeoutRule, setWelcome, TIMEOUT_NOTICE,
+  createWelcome, DEFAULT_MAX_ATTEMPTS, readSystem, setEscape, setMaxAttempts, setTimeoutMinutes, setTimeoutNotice, setWelcome, TIMEOUT_NOTICE,
 } from "./system";
 
 const SAMPLE = sample as unknown as BotDoc;
@@ -119,7 +119,9 @@ describe("references", () => {
     doc = setEscape(setWelcome(doc, "greet"), ["그만"], "show_help");
     expect(callersOf(doc, "greet")).toEqual(["웰컴"]);
     expect(callersOf(doc, "show_help")).toEqual(["탈출"]);
-    expect(systemScenarios(doc)).toEqual(new Set(["greet", "show_help"]));
+    expect(systemScenarios(doc)).toEqual(new Set()); // trigger blocks stay in the block list
+    const welcome = createWelcome(doc, "어서 오세요");
+    expect(systemScenarios(welcome.doc)).toEqual(new Set([welcome.id])); // a welcome-only block is edited under 기본 시나리오
     expect(callersOf(doc, "thank")).toEqual([]);
     expect(Object.keys(deleteBlock(doc, "thank").scenarios)).not.toContain("thank");
   });
@@ -128,7 +130,7 @@ describe("references", () => {
 describe("system settings", () => {
   it("reads defaults from a document without any of them", () => {
     expect(readSystem(SAMPLE)).toEqual({ welcome: null, escapePhrases: [], escapeScenario: null, timeoutMinutes: null,
-      timeoutNotice: "", maxAttempts: 3 });
+      timeoutNotice: "", timeoutNoticeEditable: true, maxAttempts: 3 });
     expect(DEFAULT_MAX_ATTEMPTS).toBe(3);
   });
 
@@ -154,24 +156,24 @@ describe("system settings", () => {
   });
 
   it("sets the idle timeout with an optional notice response, and removes the notice when it is cleared", () => {
-    const on = setTimeoutRule(SAMPLE, 30, "시간이 지나 처음부터 다시 할게요");
+    const on = setTimeoutNotice(setTimeoutMinutes(SAMPLE, 30), "시간이 지나 처음부터 다시 할게요");
     expect(on.system).toEqual({ timeout: { minutes: 30, notice: TIMEOUT_NOTICE } });
     expect(on.responses[TIMEOUT_NOTICE]).toEqual({ text: "시간이 지나 처음부터 다시 할게요" });
     expect(readSystem(on)).toMatchObject({ timeoutMinutes: 30, timeoutNotice: "시간이 지나 처음부터 다시 할게요" });
-    const noNotice = setTimeoutRule(on, 30, " ");
+    const noNotice = setTimeoutNotice(on, " ");
     expect(noNotice.system).toEqual({ timeout: { minutes: 30 } });
     expect(noNotice.responses[TIMEOUT_NOTICE]).toBeUndefined();
-    const off = setTimeoutRule(on, null, "무시됨");
+    const off = setTimeoutMinutes(on, null);
     expect(off.system).toBeUndefined();
     expect(off.responses[TIMEOUT_NOTICE]).toBeUndefined();
     const taken = { ...SAMPLE, responses: { ...SAMPLE.responses, [TIMEOUT_NOTICE]: { text: "다른 용도" } } };
-    const elsewhere = setTimeoutRule(taken, 10, "안내");
+    const elsewhere = setTimeoutNotice(setTimeoutMinutes(taken, 10), "안내");
     expect(elsewhere.system?.timeout?.notice).toBe(`${TIMEOUT_NOTICE}_1`); // an existing response is not overwritten
     expect(elsewhere.responses[TIMEOUT_NOTICE]).toEqual({ text: "다른 용도" });
   });
 
   it.each([0, 1441, 2.5, Number.NaN])("rejects a timeout of %s minutes", (minutes) => {
-    expect(() => setTimeoutRule(SAMPLE, minutes, "")).toThrow(RangeError);
+    expect(() => setTimeoutMinutes(SAMPLE, minutes)).toThrow(RangeError);
   });
 
   it("sets the re-ask limit within 1-10", () => {

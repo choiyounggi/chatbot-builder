@@ -191,7 +191,8 @@ export function withTexts(response: ResponseDoc | undefined, texts: string[], qu
 /** Drop optional fields left blank in the editor (the engine rejects empty strings); required ones stay,
  * so the engine can name them when they are still empty. */
 export function cleanRich(kind: RichKind, body: RichBodyDoc): RichBodyDoc {
-  const blank = (v: unknown) => v === undefined || v === null || (typeof v === "string" && !v.trim());
+  // "" left by the editor goes; an explicit null in a stored document stays (the engine accepts it)
+  const blank = (v: unknown) => v === undefined || (typeof v === "string" && !v.trim());
   const prune = <T extends object>(o: T, optional: string[]): T =>
     Object.fromEntries(Object.entries(o).filter(([k, v]) => !(optional.includes(k) && blank(v)))) as T;
   /** Only the target field its action uses (kept even when blank, so the engine names it), plus a message text. */
@@ -205,7 +206,8 @@ export function cleanRich(kind: RichKind, body: RichBodyDoc): RichBodyDoc {
   };
   const card = (c: BasicCardDoc): BasicCardDoc => {
     const next = prune(c, ["title", "description"]);
-    if (next.thumbnail && blank(next.thumbnail.image_url)) delete next.thumbnail;
+    const t = next.thumbnail;
+    if (t && blank(t.image_url) && blank(t.alt_text ?? undefined) && !t.link?.web) delete next.thumbnail; // nothing left in it
     else if (next.thumbnail) next.thumbnail = prune(next.thumbnail, ["alt_text", "link"]);
     if (next.buttons) next.buttons = next.buttons.map(button);
     return next;
@@ -225,14 +227,15 @@ export function cleanRich(kind: RichKind, body: RichBodyDoc): RichBodyDoc {
 
 /** A copy of the response without any rich body. */
 function withoutRich(response: ResponseDoc | undefined): ResponseDoc {
-  return Object.fromEntries(Object.entries(response ?? {}).filter(([k]) => !(RICH_KINDS as readonly string[]).includes(k))) as ResponseDoc;
+  return Object.fromEntries(Object.entries(response ?? {})
+    .filter(([k, v]) => v === null || !(RICH_KINDS as readonly string[]).includes(k))) as ResponseDoc; // "basic_card: null" stays
 }
 
 /** A rich response: the body replaces any text or other body. */
 export function withRich(response: ResponseDoc | undefined, kind: RichKind, body: RichBodyDoc, quickReplies: QuickReplyDoc[]): ResponseDoc {
   const next = withoutRich(response);
-  delete next.text;
-  delete next.variants;
+  if (next.text !== null) delete next.text; // an explicit null stays
+  if (next.variants !== null) delete next.variants;
   (next as Record<string, unknown>)[kind] = cleanRich(kind, body);
   if (quickReplies.length > 0 || response?.quick_replies !== undefined) next.quick_replies = quickReplies;
   return next;
