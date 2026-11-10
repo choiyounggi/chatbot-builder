@@ -343,3 +343,14 @@ describe("block names in results", () => {
     expect(screen.getByText((_, el) => el?.tagName === "LI" && el.textContent === "날씨 안내 weather · 0.60")).toBeInTheDocument();
   });
 });
+
+describe("training failures in Korean", () => {
+  it("names the blocks that need more examples", async () => {
+    engine({ jobReply: { body: jobBody("failed", null, { kind: "training", detail: "intents need at least 5 examples for evaluation: ['coupon']" }) } });
+    renderDeploy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "dirty" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "배포용 학습" }));
+    expect(await screen.findByText("예문이 5개보다 적은 블록이 있어 배포용 학습을 할 수 없어요: coupon. 블록마다 예문을 5개 이상 넣어 주세요."))
+      .toBeInTheDocument();
+  });
+});
