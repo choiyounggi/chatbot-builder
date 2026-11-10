@@ -13,7 +13,7 @@ export default defineConfig({
   timeout: 60_000,
   retries: 0, // a retry would run against an engine the first attempt already changed
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
-  use: { baseURL: `http://127.0.0.1:${APP_PORT}`, trace: "retain-on-failure" },
+  use: { baseURL: `http://127.0.0.1:${APP_PORT}`, trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {

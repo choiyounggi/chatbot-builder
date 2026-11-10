@@ -55,6 +55,7 @@ code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
 .field .help { min-height: 1lh; font-size: var(--text-sm); color: var(--color-muted); }
 .field .help[data-tone="error"] { color: var(--color-error); }
 .input {
+  min-width: 0; max-width: 100%;
   height: var(--control-height); padding: 0 var(--space-sm);
   border: var(--rule-width) solid var(--color-rule-2); border-radius: var(--radius-md);
   outline: 2px solid transparent; outline-offset: 1px;
@@ -183,8 +184,9 @@ details.notice summary { cursor: pointer; font-weight: 600; color: var(--color-i
 
 .split { display: grid; grid-template-columns: 17rem minmax(0, 1fr); gap: var(--space-lg); align-items: start; }
 .blocklist { display: grid; gap: var(--space-sm); }
-.blocklist-tools { display: flex; gap: var(--space-xs); }
-.blocklist-tools .input { flex: 1; min-width: 0; }
+/* input + button rows are grids: an input's intrinsic width differs between platforms (Linux
+   Chromium kept the search field wide in a flex row and pushed the button under the editor) */
+.blocklist-tools, .inline-add, .chat-input { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-xs); }
 .blocklist ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3xs); }
 .blocklist li a {
   display: grid; gap: var(--space-3xs); padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md);
@@ -206,8 +208,6 @@ details.notice summary { cursor: pointer; font-weight: 600; color: var(--color-i
 .group { border: var(--rule-width) solid var(--color-rule); border-radius: var(--radius-md); padding: var(--space-md); margin: 0; display: grid; gap: var(--space-sm); min-width: 0; }
 .group legend, .group summary { font-weight: 600; color: var(--color-ink); padding: 0 var(--space-2xs); }
 .group summary { cursor: pointer; }
-.inline-add { display: flex; gap: var(--space-xs); }
-.inline-add .input { flex: 1; min-width: 0; }
 .examples { list-style: none; margin: 0; padding: 0; display: grid; max-height: 18rem; overflow-y: auto; border-top: var(--rule-width) solid var(--color-rule); }
 .examples li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); padding: var(--space-2xs) 0; border-bottom: var(--rule-width) solid var(--color-rule); font-size: var(--text-sm); }
 .examples li span { overflow-wrap: anywhere; }
@@ -217,9 +217,9 @@ details.notice summary { cursor: pointer; font-weight: 600; color: var(--color-i
 .reply { display: grid; gap: var(--space-xs); padding: var(--space-sm); border: var(--rule-width) solid var(--color-rule); border-radius: var(--radius-md); background: var(--color-paper-2); }
 .reply-head { display: flex; align-items: center; gap: var(--space-xs); }
 .reply-head .mono { flex: 1; font-size: var(--text-xs); }
-.reply-text { display: flex; gap: var(--space-xs); align-items: start; }
+.reply-text { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-xs); align-items: start; }
 textarea.input { height: auto; min-height: 4rem; padding: var(--space-xs) var(--space-sm); resize: vertical; font: inherit; }
-.reply-text textarea { flex: 1; min-width: 0; }
+
 .steps { margin: 0; padding-left: var(--space-lg); font: var(--text-xs) / 1.8 var(--font-mono); }
 
 .entity-panel, .test-panel { display: grid; gap: var(--space-sm); align-content: start; }
@@ -227,8 +227,7 @@ textarea.input { height: auto; min-height: 4rem; padding: var(--space-xs) var(--
 .tabs [aria-pressed="true"] { color: var(--color-accent); border-bottom: 2px solid var(--color-accent); border-radius: 0; }
 .sys-entities { margin: 0; padding-left: var(--space-md); font-size: var(--text-sm); display: grid; gap: var(--space-2xs); }
 .entity { display: grid; gap: var(--space-xs); padding: var(--space-sm) 0; border-bottom: var(--rule-width) solid var(--color-rule); }
-.entity-head { display: flex; gap: var(--space-xs); align-items: center; }
-.entity-head .input { flex: 1; min-width: 0; }
+.entity-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--space-xs); align-items: center; }
 .entity-head .mono { font-size: var(--text-xs); }
 .values { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2xs); max-height: 20rem; overflow-y: auto; }
 .values li { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; gap: var(--space-xs); align-items: center; font-size: var(--text-sm); }
@@ -244,8 +243,7 @@ textarea.input { height: auto; min-height: 4rem; padding: var(--space-xs) var(--
 .chip-btn { height: auto; min-height: 1.75rem; padding: 0 var(--space-xs); border: var(--rule-width) solid var(--color-rule-2); font-size: var(--text-xs); }
 .debug summary { cursor: pointer; font-size: var(--text-xs); color: var(--color-muted); }
 .debug .facts { font-size: var(--text-xs); margin-top: var(--space-2xs); }
-.chat-input { display: flex; gap: var(--space-xs); }
-.chat-input .input { flex: 1; min-width: 0; }
+
 
 @media (max-width: 900px) {
   .split { grid-template-columns: minmax(0, 1fr); }
