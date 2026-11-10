@@ -93,6 +93,7 @@ export function blockTargets(response: ResponseDoc): string[] {
 export interface IntentDoc {
   label?: string;
   examples: string[];
+  exact_only?: boolean; // left out of the classifier: matched only by its exact sentences
 }
 
 export interface DictionaryEntityDoc {

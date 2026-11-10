@@ -63,6 +63,8 @@ export interface BotEngineOptions {
   open?: (build: string, session: string) => Reply; // test open replies (default: no welcome messages)
   putGate?: Promise<void>; // PUT waits for this (to edit while a save is in flight)
   jobsForgotten?: boolean; // GET job answers 404 (the engine restarted)
+  extra?: Record<string, Handler>; // more routes ("METHOD /path?query" matched without the query too)
+  buildResult?: Record<string, unknown>; // more fields in a done test-build job's result (e.g. confusable)
 }
 
 /** A stateful fake engine for one bot ("sample"): ETag rules, test builds as jobs, test chat. */
@@ -107,13 +109,15 @@ export function botEngine(options: BotEngineOptions = {}) {
       const build = `b${state.revision}`.padEnd(12, "0");
       state.jobs.set(id, options.buildFails
         ? { status: "failed", result: null, error: { kind: "training", detail: "need at least two intents" } }
-        : { status: "done", result: { build }, error: null });
+        : { status: "done", result: { build, ...options.buildResult }, error: null });
       return { status: 202, body: { ...job(id), status: "queued", result: null, error: null, finished_at: null } };
     },
   };
   const fetchMock = fakeEngine(new Proxy(routes, {
     get(target, key: string) {
       if (key in target) return target[key];
+      const extra = options.extra?.[key] ?? options.extra?.[key.split("?")[0] as string];
+      if (extra) return extra;
       const jobMatch = key.match(/^GET \/v1\/builder\/jobs\/(\w+)$/);
       if (jobMatch?.[1] && options.jobsForgotten) {
         return () => { state.jobPolls += 1; return { status: 404, body: { detail: "unknown job" } }; };

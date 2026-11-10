@@ -10,11 +10,29 @@ import type { Draft, DraftSaved, Job } from "../api/types";
 import { sameDoc } from "../model/blocks";
 import type { BotDoc } from "../model/doc";
 
+/** Two intents whose closest examples are very alike (engine E13), from the newest test build. */
+export interface ConfusablePair {
+  a: string;
+  b: string;
+  similarity: number;
+  example_a: string;
+  example_b: string;
+}
+
 export type BuildState =
   | { status: "none" }
   | { status: "building" }
-  | { status: "ready"; build: string }
+  | { status: "ready"; build: string; confusable: ConfusablePair[] }
   | { status: "failed"; job: Job | null };
+
+/** The pairs in a job result, skipping anything malformed (an older engine sends none). */
+export function confusableOf(result: Record<string, unknown> | null | undefined): ConfusablePair[] {
+  const raw = result?.confusable;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((p): p is ConfusablePair => !!p && typeof p === "object"
+    && typeof (p as ConfusablePair).a === "string" && typeof (p as ConfusablePair).b === "string"
+    && typeof (p as ConfusablePair).similarity === "number");
+}
 
 export interface DraftApi {
   botId: string;
@@ -102,7 +120,9 @@ export function DraftProvider({ botId, children }: { botId: string; children: Re
       return { status: "building" };
     }
     if (build.isError || job.isError) return { status: "failed", job: null };
-    if (job.data?.status === "done" && typeof job.data.result?.build === "string") return { status: "ready", build: job.data.result.build };
+    if (job.data?.status === "done" && typeof job.data.result?.build === "string") {
+      return { status: "ready", build: job.data.result.build, confusable: confusableOf(job.data.result) };
+    }
     if (job.data?.status === "failed") return { status: "failed", job: job.data };
     return { status: "none" };
   }, [build.isPending, build.isError, jobId, job.data, job.isError]);

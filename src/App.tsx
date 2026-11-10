@@ -7,7 +7,12 @@ import { BotLayout, SECTIONS } from "./pages/BotLayout";
 import { BotList } from "./pages/BotList";
 import { BotSettings } from "./pages/BotSettings";
 import { NotYet } from "./pages/NotYet";
+import { MachineLearning } from "./pages/MachineLearning";
 import { Scenarios } from "./pages/Scenarios";
+import { Training } from "./pages/Training";
+
+/** Sections with their own screen; the others show which step builds them. */
+const BUILT = new Set<string>(["scenarios", "settings", "training", "ml"]);
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -29,7 +34,9 @@ export function AppRoutes() {
         <Route index element={<Navigate to="settings" replace />} />
         <Route path="scenarios" element={<Scenarios />} />
         <Route path="scenarios/:blockId" element={<Scenarios />} />
-        {SECTIONS.filter((s) => s.path !== "settings" && s.path !== "scenarios").map((s) => (
+        <Route path="training" element={<Training />} />
+        <Route path="ml" element={<MachineLearning />} />
+        {SECTIONS.filter((s) => !BUILT.has(s.path)).map((s) => (
           <Route key={s.path} path={s.path} element={<NotYet section={s.path} />} />
         ))}
         <Route path="settings" element={<BotSettings />} />
