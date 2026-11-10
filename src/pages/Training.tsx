@@ -106,7 +106,8 @@ function QueueRow({ item, index, targets, onNotice }: {
 }) {
   const draft = useDraft();
   const queryClient = useQueryClient();
-  const predicted = targets.some((t) => t.intent === item.intent) ? item.intent ?? "" : "";
+  // only a real block is preselected: adding a misunderstood sentence to 모르는 질문 must be a deliberate choice
+  const predicted = item.intent !== OOS && targets.some((t) => t.intent === item.intent) ? item.intent ?? "" : "";
   // null: not chosen yet, so follow the closest block (the draft may load after the queue)
   const [chosen, setChosen] = useState<string | null>(null);
   const target = chosen ?? predicted;

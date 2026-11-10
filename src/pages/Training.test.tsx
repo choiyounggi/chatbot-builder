@@ -77,6 +77,16 @@ describe("학습대기", () => {
     await waitFor(() => expect(screen.queryByText("양자컴퓨터로 날씨 예측해줘")).toBeNull()); // no longer pending
   });
 
+  it("does not preselect 모르는 질문 for a sentence closest to it", async () => {
+    botEngine({ extra: { [`GET ${B}/utterances`]: () => ({ body: { bot: "sample", scanned: 1, truncated: false,
+      items: [item("오늘 저녁 메뉴 골라줘", { intent: "out_of_scope", score: 0.68 })] } }) } });
+    renderAt("/bots/sample/training");
+    const row = (await screen.findByText("오늘 저녁 메뉴 골라줘")).closest("li") as HTMLElement;
+    await within(row).findByText(/모르는 질문\(폴백\) 68%/); // the targets are loaded
+    expect(within(row).getByLabelText(/을 넣을 블록/)).toHaveValue("");
+    expect(within(row).getByRole("button", { name: "예문으로 추가" })).toBeDisabled();
+  });
+
   it("filters by period, rule, block and status", async () => {
     const { asked } = queueEngine();
     renderAt("/bots/sample/training");

@@ -68,10 +68,11 @@ function engine(options: {
   jobReply?: Reply;
   deployReply?: Reply;
   rollbackReply?: Reply;
+  draft?: Handler;
 } = {}) {
   const calls: string[] = [];
   const routes: Record<string, Handler> = {
-    "GET /v1/builder/bots/sample/draft": DRAFT_ROUTE,
+    "GET /v1/builder/bots/sample/draft": options.draft ?? DRAFT_ROUTE,
     "GET /v1/builder/bots/sample/versions": () => {
       calls.push("versions");
       return options.versions ?? { body: SAMPLE_VERSIONS };
@@ -324,5 +325,21 @@ describe("trainingMessage", () => {
     expect(trainingMessage("need at least two intents", label)).toBe("학습할 블록이 둘 이상 있어야 해요.");
     expect(trainingMessage("something else", label)).toBe("something else");
     expect(trainingMessage("", label)).toBe("");
+  });
+});
+
+
+describe("block names in results", () => {
+  it("shows the block's name for an intent id in the lowest scores and confusable pairs", async () => {
+    const draft: Handler = () => ({ body: { id: "sample", intents: { weather: { examples: ["날씨"] } },
+      scenarios: { check_weather: { label: "날씨 안내", trigger: { intent: "weather" }, steps: [] } }, responses: {} },
+    headers: { ETag: '"1"' } });
+    engine({ draft });
+    renderDeploy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "dirty" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "배포용 학습" }));
+    await screen.findByText("학습을 마쳤어요 · macro-F1 0.95");
+    expect(screen.getByText("날씨 안내 ↔ weather_tomorrow · 0.86")).toBeInTheDocument();
+    expect(screen.getByText((_, el) => el?.tagName === "LI" && el.textContent === "날씨 안내 weather · 0.60")).toBeInTheDocument();
   });
 });

@@ -25,16 +25,23 @@ const NOTE_MAX = 100;
 
 const fmtF1 = (f: number | null) => (f !== null ? f.toFixed(2) : "—");
 
+/** A block's name for an intent id (falls back to the id). */
+function useIntentLabel(): (intent: string) => string {
+  const { doc } = useDraft();
+  return (intent) => (doc ? listBlocks(doc).find((b) => b.intent === intent)?.label : undefined) || intent;
+}
+
 function LowestIntents({ data }: { data: Record<string, number> | null }) {
+  const labelOf = useIntentLabel();
   if (!data) return null;
   const lowest = Object.entries(data).sort((a, b) => a[1] - b[1]).slice(0, 5);
   if (lowest.length === 0) return null;
   return (
     <div>
-      <h3>의도별 F1 (낮은 다섯 개)</h3>
+      <h3>블록별 F1 (낮은 다섯 개)</h3>
       <ul>
         {lowest.map(([intent, f1]) => (
-          <li key={intent}><span className="mono">{intent}</span> · {f1.toFixed(2)}</li>
+          <li key={intent}>{labelOf(intent)} <span className="mono status">{intent}</span> · {f1.toFixed(2)}</li>
         ))}
       </ul>
     </div>
@@ -54,12 +61,13 @@ function Thresholds({ t }: { t: VersionThresholds | null }) {
 }
 
 function Confusable({ pairs }: { pairs: ConfusablePair[] }) {
+  const labelOf = useIntentLabel();
   if (pairs.length === 0) return null;
   return (
     <div>
-      <h3>헷갈리는 의도 쌍</h3>
+      <h3>헷갈리는 블록</h3>
       <ul>
-        {pairs.map((p, i) => <li key={i}>{p.label}{p.score !== null ? ` · ${p.score.toFixed(2)}` : ""}</li>)}
+        {pairs.map((p, i) => <li key={i}>{p.label.split(" ↔ ").map(labelOf).join(" ↔ ")}{p.score !== null ? ` · ${p.score.toFixed(2)}` : ""}</li>)}
       </ul>
     </div>
   );
@@ -96,8 +104,7 @@ export function trainingMessage(detail: string, labelOf: (intent: string) => str
 }
 
 function TrainError({ error }: { error: VersionJobError }) {
-  const { doc } = useDraft();
-  const labelOf = (intent: string) => (doc ? listBlocks(doc).find((b) => b.intent === intent)?.label : undefined) || intent;
+  const labelOf = useIntentLabel();
   return (
     <div className="notice" data-tone="error" role="alert">
       <h2>학습하지 못했어요</h2>
