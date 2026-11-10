@@ -20,8 +20,8 @@ describe("blocks over the engine document", () => {
     expect(kindOf(weather)).toBe("trigger");
     expect(weather.intent).toBe("weather");
     expect(weather.examples).toEqual(SAMPLE.intents?.weather?.examples);
-    expect(weather.params).toEqual([{ name: "location", entity: "location",
-      ask: { response: "ask_location", texts: [SAMPLE.responses.ask_location?.text], quickReplies: ["서울", "부산", "제주"] } }]);
+    expect(weather.params).toEqual([{ name: "location", entity: "location", required: true, default: null,
+      ask: { response: "ask_location", kind: "text", rich: null, texts: [SAMPLE.responses.ask_location?.text], quickReplies: ["서울", "부산", "제주"] } }]);
     expect(weather.replies.map((r) => r.response)).toEqual(["weather_report"]);
     expect(weather.steps.map((s) => Object.keys(s)[0])).toEqual(["collect", "action", "respond"]);
     expect(listBlocks(SAMPLE)).toHaveLength(9);
@@ -55,7 +55,7 @@ describe("blocks over the engine document", () => {
     const time = readBlock(SAMPLE, "current_time"); // action, respond
     const added = addParam(SAMPLE, time, "sys.date");
     expect(added.steps[0]).toEqual({ collect: "param_1" });
-    const written = writeBlock(SAMPLE, { ...added, params: added.params.map((p) => ({ ...p, ask: { ...p.ask, texts: ["언제요?"] } })) });
+    const written = writeBlock(SAMPLE, { ...added, params: added.params.map((p) => ({ ...p, ask: p.ask && { ...p.ask, texts: ["언제요?"] } })) });
     expect(written.scenarios.current_time?.slots).toEqual({ param_1: { entity: "sys.date", ask: "current_time_ask_1" } });
     expect(written.responses.current_time_ask_1).toEqual({ text: "언제요?" });
     const second = addParam(written, readBlock(written, "current_time"), "location");
@@ -115,9 +115,9 @@ describe("documents shaped unlike the sample", () => {
     const doc = base();
     doc.scenarios.s = { trigger: { intent: "greet" }, slots: { name: { entity: "sys.text", ask: "hi" } }, steps: [{ respond: "hi" }, { respond: "hi" }] };
     const block = readBlock(doc, "s");
-    expect(block.params[0]?.ask.sharedWith).toBeUndefined();
+    expect(block.params[0]?.ask?.sharedWith).toBeUndefined();
     expect(block.replies.map((r) => r.sharedWith)).toEqual(["파라미터 name의 질문", "파라미터 name의 질문"]);
-    const edited = { ...block, params: block.params.map((p) => ({ ...p, ask: { ...p.ask, texts: ["이름이 뭐예요?"] } })) };
+    const edited = { ...block, params: block.params.map((p) => ({ ...p, ask: p.ask && { ...p.ask, texts: ["이름이 뭐예요?"] } })) };
     expect(writeBlock(doc, edited).responses.hi).toEqual({ text: "이름이 뭐예요?" }); // not overwritten by the stale replies
     expect(sameDoc(writeBlock(doc, block), doc)).toBe(true);
   });

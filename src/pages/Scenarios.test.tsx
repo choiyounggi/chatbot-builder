@@ -15,12 +15,13 @@ describe("scenario and block editor", () => {
     botEngine();
     renderAt("/bots/sample/scenarios");
     const list = await screen.findByRole("region", { name: "블록 목록" });
-    expect(within(list).getAllByRole("link")).toHaveLength(9);
+    expect(within(list).getByRole("list", { name: "기본 시나리오" }).querySelectorAll("a")).toHaveLength(4);
+    expect(within(list).getByRole("list", { name: "블록" }).querySelectorAll("a")).toHaveLength(9);
     expect(within(list).getByRole("link", { name: /날씨 안내.*발화로 시작 · 발화 123/ })).toBeInTheDocument();
     expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toContain("out_of_scope · 185개");
     expect(screen.getByText("왼쪽에서 블록을 고르거나 새 블록을 만드세요.")).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("블록 검색"), "check_weather");
-    expect(within(list).getAllByRole("link")).toHaveLength(1);
+    expect(within(list).getByRole("list", { name: "블록" }).querySelectorAll("a")).toHaveLength(1);
     await userEvent.clear(screen.getByLabelText("블록 검색"));
     await userEvent.type(screen.getByLabelText("블록 검색"), "없는블록");
     expect(within(list).getByText("찾는 블록이 없어요.")).toBeInTheDocument();
@@ -59,9 +60,11 @@ describe("scenario and block editor", () => {
     await userEvent.type(newText, "또 오셨네요");
     await userEvent.click(within(editor).getAllByRole("button", { name: "랜덤 문구 추가" })[1] as HTMLElement);
     await userEvent.type(within(editor).getByLabelText("응답 2 문구 2"), "반가워요");
-    const quick = within(editor).getByLabelText("응답 2 바로연결 버튼");
-    await userEvent.type(quick, "날씨, 시간, ");
-    expect(quick).toHaveValue("날씨, 시간, "); // the trailing comma stays while typing
+    const addQuick = within(editor).getAllByRole("button", { name: "바로연결 추가" })[1] as HTMLElement;
+    await userEvent.click(addQuick);
+    await userEvent.type(within(editor).getByLabelText("응답 2 바로연결 1 이름"), "날씨");
+    await userEvent.click(addQuick);
+    await userEvent.type(within(editor).getByLabelText("응답 2 바로연결 2 이름"), "시간");
     await userEvent.click(within(editor).getByRole("button", { name: "파라미터 추가" }));
     await userEvent.selectOptions(within(editor).getByLabelText("param_1 엔티티"), "sys.time");
     await userEvent.type(within(editor).getByLabelText("param_1 되묻기 질문"), "몇 시에요?");
@@ -100,7 +103,7 @@ describe("scenario and block editor", () => {
     const { state } = botEngine({ doc: doc as unknown as Record<string, unknown> });
     renderAt("/bots/sample/scenarios/show_help");
     await userEvent.click(await screen.findByRole("button", { name: "블록 삭제" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("다른 블록이 이 블록을 부르고 있어요: greet");
+    expect(screen.getByRole("alert")).toHaveTextContent("이 블록을 쓰는 곳이 있어요: greet");
     await userEvent.click(screen.getByRole("link", { name: /날씨 안내/ }));
     await userEvent.click(await screen.findByRole("button", { name: "블록 삭제" }));
     expect(await screen.findByText("왼쪽에서 블록을 고르거나 새 블록을 만드세요.")).toBeInTheDocument();
