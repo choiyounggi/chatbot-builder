@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeEngine, headerOf, SAMPLE } from "../test/engine";
 import { ApiError, AuthError, ConflictError, EngineUnreachable, getDraft, listBots, saveDraft } from "./client";
+import type { BotDoc } from "../model/doc";
 import { setToken } from "./token";
 
 afterEach(() => vi.unstubAllGlobals());
+
+const doc = (fields: { id: string; label?: string }): BotDoc => ({ scenarios: {}, responses: {}, ...fields });
 
 describe("api client", () => {
   it("lists bots and sends the admin token when one is set", async () => {
@@ -37,7 +40,7 @@ describe("api client", () => {
 
   it("keeps the engine's list of problems", async () => {
     fakeEngine({ "PUT /v1/builder/bots/sample/draft": () => ({ status: 422, body: { detail: ["the document's id must be 'sample'", 7] } }) });
-    await expect(saveDraft("sample", { id: "other" }, '"1"')).rejects.toMatchObject({
+    await expect(saveDraft("sample", doc({ id: "other" }), '"1"')).rejects.toMatchObject({
       status: 422, problems: ["the document's id must be 'sample'"] });
   });
 
@@ -64,15 +67,15 @@ describe("api client", () => {
   it("saves with If-Match and turns a 412 into a conflict with the current revision", async () => {
     const saved = { bot: "sample", version: "abc", revision: 5, valid: true, errors: [], warnings: [] };
     const fetchMock = fakeEngine({ "PUT /v1/builder/bots/sample/draft": () => ({ body: saved }) });
-    expect(await saveDraft("sample", { id: "sample", label: "새 이름" }, '"4"')).toEqual(saved);
+    expect(await saveDraft("sample", doc({ id: "sample", label: "새 이름" }), '"4"')).toEqual(saved);
     const init = fetchMock.mock.calls[0]?.[1];
     expect(headerOf(init, "If-Match")).toBe('"4"');
-    expect(JSON.parse(String(init?.body))).toEqual({ id: "sample", label: "새 이름" });
+    expect(JSON.parse(String(init?.body))).toEqual(doc({ id: "sample", label: "새 이름" }));
     fakeEngine({ "PUT /v1/builder/bots/sample/draft": () => ({ status: 412, body: { detail: "moved", revision: 6 } }) });
-    const conflict = await saveDraft("sample", { id: "sample" }, '"4"').catch((e: unknown) => e);
+    const conflict = await saveDraft("sample", doc({ id: "sample" }), '"4"').catch((e: unknown) => e);
     expect(conflict).toBeInstanceOf(ConflictError);
     expect((conflict as ConflictError).revision).toBe(6);
     fakeEngine({ "PUT /v1/builder/bots/sample/draft": () => ({ status: 412, body: { detail: "moved" } }) });
-    await expect(saveDraft("sample", { id: "sample" }, '"4"')).rejects.toMatchObject({ revision: null });
+    await expect(saveDraft("sample", doc({ id: "sample" }), '"4"')).rejects.toMatchObject({ revision: null });
   });
 });

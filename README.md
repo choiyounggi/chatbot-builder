@@ -3,8 +3,9 @@
 A builder UI for [chatbot-engine](https://github.com/choiyounggi/chatbot-engine): edit blocks
 (intents + scenarios), entities, skills and a knowledge base, test a draft, deploy and roll back.
 
-> Status: B1 — app shell (menus, entity / bot-test panels, light and dark themes), the bot list and
-> bot settings (rename, saved with the draft's ETag). The other menus say which step builds them.
+> Status: B2 — bot list, scenario/block editor (examples, parameters, replies, quick replies), entity
+> panel, bot test panel (chat with a test build of the saved draft, with what the engine decided), one
+> shared draft saved with its ETag. The other menus say which step builds them.
 > Plan: [docs/builder-plan.md](docs/builder-plan.md) (Korean).
 
 ## Run it
@@ -28,4 +29,6 @@ If the engine runs with `CHATCORE_ADMIN_TOKEN`, the builder asks for it once per
 ```sh
 npm run check   # tsc + eslint + vitest (coverage gate) — the same as CI
 npm run build   # production bundle in dist/
+npm run gen:api # regenerate src/api/schema.d.ts from the engine (ENGINE_OPENAPI=path/to/openapi.json)
+ENGINE_DIR=../chatbot-engine npm run e2e   # Playwright against a real engine (hashing embedder, no model)
 ```

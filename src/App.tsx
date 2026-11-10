@@ -7,6 +7,7 @@ import { BotLayout, SECTIONS } from "./pages/BotLayout";
 import { BotList } from "./pages/BotList";
 import { BotSettings } from "./pages/BotSettings";
 import { NotYet } from "./pages/NotYet";
+import { Scenarios } from "./pages/Scenarios";
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -26,7 +27,9 @@ export function AppRoutes() {
       <Route path="/" element={<BotList />} />
       <Route path="/bots/:botId" element={<BotLayout />}>
         <Route index element={<Navigate to="settings" replace />} />
-        {SECTIONS.filter((s) => s.path !== "settings").map((s) => (
+        <Route path="scenarios" element={<Scenarios />} />
+        <Route path="scenarios/:blockId" element={<Scenarios />} />
+        {SECTIONS.filter((s) => s.path !== "settings" && s.path !== "scenarios").map((s) => (
           <Route key={s.path} path={s.path} element={<NotYet section={s.path} />} />
         ))}
         <Route path="settings" element={<BotSettings />} />

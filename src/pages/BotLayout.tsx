@@ -2,7 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useParams } from "react-router";
 import { listBots } from "../api/client";
+import { EntityPanel } from "../components/EntityPanel";
+import { TestPanel } from "../components/TestPanel";
 import { TopBar } from "../components/TopBar";
+import { DraftProvider } from "../draft/DraftContext";
+import { SaveBar } from "../draft/SaveBar";
 
 /** The bot's sections, in the order a builder works through them. */
 export const SECTIONS = [
@@ -17,9 +21,9 @@ export const SECTIONS = [
 ] as const;
 
 type PanelKind = "entities" | "tester";
-const PANELS: Record<PanelKind, { title: string; body: string }> = {
-  entities: { title: "엔티티", body: "엔티티(대표값과 동의어) 편집은 다음 단계(B2)에서 이 패널에 만들어요." },
-  tester: { title: "봇테스트", body: "저장한 초안으로 대화해 보는 테스트 창은 다음 단계(B2)에서 이 패널에 만들어요." },
+const PANELS: Record<PanelKind, { title: string }> = {
+  entities: { title: "엔티티" },
+  tester: { title: "봇테스트" },
 };
 
 export function BotLayout() {
@@ -45,7 +49,7 @@ export function BotLayout() {
   }, [pathname]);
 
   return (
-    <>
+    <DraftProvider key={botId} botId={botId}>
       <TopBar actions={
         <span className="tools">
           {(Object.keys(PANELS) as PanelKind[]).map((kind) => (
@@ -71,6 +75,7 @@ export function BotLayout() {
           </ul>
         </nav>
         <main className="content" id="content" tabIndex={-1}>
+          <SaveBar />
           <Outlet />
         </main>
         {panel && (
@@ -79,10 +84,10 @@ export function BotLayout() {
               <h2>{PANELS[panel].title}</h2>
               <button type="button" className="btn btn--quiet" onClick={close} aria-label={`${PANELS[panel].title} 닫기`}>닫기</button>
             </header>
-            <p className="status">{PANELS[panel].body}</p>
+            {panel === "entities" ? <EntityPanel /> : <TestPanel />}
           </aside>
         )}
       </div>
-    </>
+    </DraftProvider>
   );
 }

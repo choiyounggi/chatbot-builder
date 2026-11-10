@@ -2,7 +2,6 @@ import { SECTIONS } from "./BotLayout";
 
 /** The builder step that builds each section (docs/builder-plan.md §6). */
 const STEP: Record<string, string> = {
-  scenarios: "B2 — 시나리오·블록 편집기",
   skills: "B5 — 스킬 화면",
   training: "B4 — 학습대기·학습이력",
   analytics: "B7 — 분석",
