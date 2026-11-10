@@ -55,6 +55,11 @@ describe("api client", () => {
     expect(error).not.toBeInstanceOf(AuthError);
   });
 
+  it("reads a detail object ({detail, errors}) as the message and its problems", async () => {
+    fakeEngine({ "GET /v1/builder/bots/x/draft": () => ({ status: 409, body: { detail: { detail: "v1 cannot run here", errors: ["unknown action 'x'", 3] } } }) });
+    await expect(getDraft("x")).rejects.toMatchObject({ status: 409, message: "v1 cannot run here", problems: ["unknown action 'x'"] });
+  });
+
   it("returns the draft with its ETag and refuses a draft without one", async () => {
     fakeEngine({
       "GET /v1/builder/bots/sample/draft": () => ({ body: { id: "sample", label: "샘플" }, headers: { ETag: '"4"' } }),

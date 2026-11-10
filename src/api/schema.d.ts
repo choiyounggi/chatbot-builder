@@ -134,6 +134,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/builder/bots/{bot}/edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Edits
+         * @description 작업이력: what each draft save changed, newest first.
+         */
+        get: operations["edits_v1_builder_bots__bot__edits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/builder/bots/{bot}/misunderstood": {
         parameters: {
             query?: never;
@@ -231,6 +251,105 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/builder/bots/{bot}/utterances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Utterances
+         * @description 학습대기: what users said in [since, until), grouped by sentence, most frequent first.
+         *     Test-chat sessions are not included. Reads at most the newest UTTERANCE_SCAN messages.
+         */
+        get: operations["utterances_v1_builder_bots__bot__utterances_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/utterances/add": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Examples
+         * @description Add sentences to an intent of the draft as examples, like a save: needs the draft's ETag
+         *     (428 without, 412 when it moved on). 404 unknown intent, 409 already another intent's example.
+         */
+        post: operations["add_examples_v1_builder_bots__bot__utterances_add_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/utterances/ignore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ignore
+         * @description Hide sentences from the queue (they come back with "restore").
+         */
+        post: operations["ignore_v1_builder_bots__bot__utterances_ignore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/utterances/marks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Marks
+         * @description 학습이력: sentences added, ignored or restored, newest first.
+         */
+        get: operations["marks_v1_builder_bots__bot__utterances_marks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/utterances/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore */
+        post: operations["restore_v1_builder_bots__bot__utterances_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/builder/bots/{bot}/versions": {
         parameters: {
             query?: never;
@@ -313,6 +432,13 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** AddExamplesIn */
+        AddExamplesIn: {
+            /** Intent */
+            intent: string;
+            /** Texts */
+            texts: string[];
+        };
         /** BasicCard */
         BasicCard: {
             /** Buttons */
@@ -355,6 +481,7 @@ export interface components {
              * @default {
              *       "ambiguity_margin": 0.1,
              *       "intent_threshold": 0.3,
+             *       "keyword_match": false,
              *       "max_attempts": 3,
              *       "max_stack_depth": 5,
              *       "max_steps_per_turn": 20,
@@ -441,6 +568,27 @@ export interface components {
              */
             type: "basic_card";
         };
+        /** ChangeOut */
+        ChangeOut: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "added" | "removed" | "changed";
+            /**
+             * Area
+             * @enum {string}
+             */
+            area: "bot" | "settings" | "system" | "block" | "intent" | "entity" | "response";
+            /** Examples Added */
+            examples_added?: number | null;
+            /** Examples Removed */
+            examples_removed?: number | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+        };
         /** CollectStep */
         CollectStep: {
             /** Collect */
@@ -499,6 +647,22 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
+        /** EditOut */
+        EditOut: {
+            /** Changes */
+            changes: components["schemas"]["ChangeOut"][];
+            /** Revision */
+            revision: number;
+            /** Saved At */
+            saved_at: string;
+        };
+        /** EditsOut */
+        EditsOut: {
+            /** Bot */
+            bot: string;
+            /** Items */
+            items: components["schemas"]["EditOut"][];
+        };
         /**
          * Escape
          * @description Kakao's 탈출 block: these exact phrases end every running scenario.
@@ -529,6 +693,11 @@ export interface components {
         };
         /** Intent */
         Intent: {
+            /**
+             * Exact Only
+             * @default false
+             */
+            exact_only: boolean;
             /** Examples */
             examples: string[];
             /**
@@ -598,6 +767,36 @@ export interface components {
             /** Live */
             live: string;
         };
+        /** MarkOut */
+        MarkOut: {
+            /** Intent */
+            intent: string | null;
+            /** Key */
+            key: string;
+            /** Marked At */
+            marked_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "ignored" | "added";
+            /** Text */
+            text: string;
+        };
+        /** MarkedOut */
+        MarkedOut: {
+            /** Bot */
+            bot: string;
+            /** Marked */
+            marked: number;
+        };
+        /** MarksOut */
+        MarksOut: {
+            /** Bot */
+            bot: string;
+            /** Items */
+            items: components["schemas"]["MarkOut"][];
+        };
         /** MessageIn */
         MessageIn: {
             /** Block Id */
@@ -664,7 +863,7 @@ export interface components {
              * Matched By
              * @enum {string}
              */
-            matched_by: "exact" | "classifier";
+            matched_by: "exact" | "keyword" | "classifier";
             /** Similarity */
             similarity: number;
             /** Text */
@@ -765,6 +964,11 @@ export interface components {
             steps: (components["schemas"]["CollectStep"] | components["schemas"]["ActionStep"] | components["schemas"]["RespondStep"] | components["schemas"]["CallStep"] | components["schemas"]["BranchStep"])[];
             trigger?: components["schemas"]["Trigger"] | null;
         };
+        /** SentencesIn */
+        SentencesIn: {
+            /** Texts */
+            texts: string[];
+        };
         /**
          * SessionTimeout
          * @description A session idle longer than this starts over at its next message (Kakao: 최대 대기 시간).
@@ -788,6 +992,11 @@ export interface components {
              */
             intent_threshold: number;
             /**
+             * Keyword Match
+             * @default false
+             */
+            keyword_match: boolean;
+            /**
              * Max Attempts
              * @default 3
              */
@@ -807,6 +1016,8 @@ export interface components {
              * @default 3
              */
             rerun_window: number;
+            /** Similarity Level */
+            similarity_level?: ("low" | "normal" | "somewhat_high" | "high" | "very_high") | null;
             /**
              * Similarity Threshold
              * @default 0.39
@@ -899,6 +1110,45 @@ export interface components {
             } | null;
             /** Session */
             session: string;
+        };
+        /** UtteranceOut */
+        UtteranceOut: {
+            /** Count */
+            count: number;
+            /** First Seen */
+            first_seen: string;
+            /** Intent */
+            intent: string | null;
+            /** Key */
+            key: string;
+            /** Last Seen */
+            last_seen: string;
+            /** Rule */
+            rule: string;
+            /** Score */
+            score: number | null;
+            /** Sessions */
+            sessions: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "ignored" | "added";
+            /** Status Intent */
+            status_intent: string | null;
+            /** Text */
+            text: string;
+        };
+        /** UtterancesOut */
+        UtterancesOut: {
+            /** Bot */
+            bot: string;
+            /** Items */
+            items: components["schemas"]["UtteranceOut"][];
+            /** Scanned */
+            scanned: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /**
          * Validation
@@ -1222,6 +1472,41 @@ export interface operations {
             };
         };
     };
+    edits_v1_builder_bots__bot__edits_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     misunderstood_v1_builder_bots__bot__misunderstood_get: {
         parameters: {
             query?: {
@@ -1384,6 +1669,193 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TestTurnOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    utterances_v1_builder_bots__bot__utterances_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                until?: string | null;
+                rule?: "misunderstood" | "all";
+                intent?: string | null;
+                status?: "pending" | "ignored" | "added" | "all";
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UtterancesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_examples_v1_builder_bots__bot__utterances_add_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "if-match"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddExamplesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftSavedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ignore_v1_builder_bots__bot__utterances_ignore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SentencesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    marks_v1_builder_bots__bot__utterances_marks_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarksOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_v1_builder_bots__bot__utterances_restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SentencesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkedOut"];
                 };
             };
             /** @description Validation Error */

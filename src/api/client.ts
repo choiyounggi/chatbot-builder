@@ -33,7 +33,7 @@ export class ConflictError extends ApiError {
 /** The request never got an answer from the engine (not running, wrong port). */
 export class EngineUnreachable extends Error {}
 
-async function request(path: string, init: RequestInit = {}): Promise<Response> {
+export async function request(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   const token = getToken();
   if (token) {
@@ -60,11 +60,15 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
     const revision = body !== null && typeof body === "object" && "revision" in body ? body.revision : null;
     throw new ConflictError(typeof revision === "number" ? revision : null);
   }
-  const problems = Array.isArray(detail) ? detail.filter((d): d is string => typeof d === "string") : [];
-  throw new ApiError(res.status, typeof detail === "string" ? detail : `HTTP ${res.status}`, problems);
+  // the engine sends a string, a list of problems, or {detail, errors} (e.g. a version that cannot run here)
+  const inner = detail !== null && typeof detail === "object" && !Array.isArray(detail) ? detail as Record<string, unknown> : null;
+  const list = Array.isArray(detail) ? detail : Array.isArray(inner?.errors) ? inner.errors : [];
+  const problems = (list as unknown[]).filter((d): d is string => typeof d === "string");
+  const message = typeof detail === "string" ? detail : typeof inner?.detail === "string" ? inner.detail : `HTTP ${res.status}`;
+  throw new ApiError(res.status, message, problems);
 }
 
-const bot = (id: string) => `/v1/builder/bots/${encodeURIComponent(id)}`;
+export const bot = (id: string) => `/v1/builder/bots/${encodeURIComponent(id)}`;
 
 export async function listBots(): Promise<BotSummary[]> {
   const res = await request("/v1/builder/bots");
