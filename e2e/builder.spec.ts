@@ -72,3 +72,41 @@ test("a card reply shows in the test chat, and its block buttons start the block
   await chat.getByRole("button", { name: "지금 시각" }).click(); // the card's block button
   await expect(chat.getByText(/^지금은 .+에요\.$/)).toBeVisible(); // "…시예요." or "…분이에요."
 });
+
+test("a misunderstood sentence added to a block, trained and deployed, goes to that block", async ({ page, request }) => {
+  const sentence = "양자컴퓨터로 내일 날씨 예측해 줄래";
+  const say = async (session: string) => {
+    const r = await request.post(`http://127.0.0.1:8765/v1/bots/sample/sessions/${session}/messages`, { data: { text: sentence } });
+    expect(r.ok()).toBe(true);
+    return ((await r.json()) as { messages: { response: string }[] }).messages.map((m) => m.response);
+  };
+  expect(await say("e2e-queue-1")).toEqual(["fallback"]);
+
+  // earlier tests leave a one-example block; deploy training needs 5 examples per block
+  const draftUrl = "http://127.0.0.1:8765/v1/builder/bots/sample/draft";
+  const current = await request.get(draftUrl);
+  const doc = (await current.json()) as { intents: Record<string, { examples: string[] }> };
+  for (const [id, intent] of Object.entries(doc.intents)) {
+    for (let n = 1; intent.examples.length < 5; n++) intent.examples.push(`${id} 예문 ${n}번째로 추가한 문장`);
+  }
+  const saved = await request.put(draftUrl, { data: doc, headers: { "If-Match": current.headers().etag ?? "" } });
+  expect(saved.ok()).toBe(true);
+
+  await page.goto("/");
+  await page.getByRole("link", { name: "샘플 봇" }).click();
+  await page.getByRole("navigation", { name: "봇 메뉴" }).getByRole("link", { name: "학습" }).click();
+  const row = page.getByRole("listitem").filter({ hasText: sentence });
+  await expect(row).toBeVisible();
+  await row.getByLabel(/을 넣을 블록/).selectOption("weather");
+  await row.getByRole("button", { name: "예문으로 추가" }).click();
+  await expect(page.getByText(/‘날씨 안내’의 예문으로 넣었어요/)).toBeVisible();
+  await expect(row).toHaveCount(0); // handled: out of the pending queue
+
+  await page.getByRole("navigation", { name: "봇 메뉴" }).getByRole("link", { name: "배포" }).click();
+  await page.getByRole("button", { name: "배포용 학습" }).click();
+  await expect(page.getByText(/학습을 마쳤어요 · macro-F1/)).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "배포", exact: true }).click();
+  await expect(page.getByText(/v\d+ 배포됨/)).toBeVisible();
+
+  expect(await say("e2e-queue-2")).toEqual(["ask_location"]); // the weather block starts and asks where
+});

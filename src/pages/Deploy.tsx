@@ -16,6 +16,7 @@ import {
   type VersionJobResult,
   type VersionThresholds,
 } from "../api/deploy";
+import { listBlocks } from "../model/blocks";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useDraft } from "../draft/DraftContext";
 import "../styles/deploy.css";
@@ -83,7 +84,20 @@ function TrainResult({ result }: { result: VersionJobResult }) {
   );
 }
 
+/** The engine's training failure in Korean, naming blocks by their labels (the detail stays for anything else). */
+export function trainingMessage(detail: string, labelOf: (intent: string) => string): string {
+  const few = /at least (\d+) examples[^[]*\[([^\]]*)\]/.exec(detail);
+  if (few) {
+    const names = (few[2] ?? "").split(",").map((n) => n.trim().replace(/^'|'$/g, "")).filter(Boolean).map(labelOf);
+    return `예문이 ${few[1]}개보다 적은 블록이 있어 배포용 학습을 할 수 없어요: ${names.join(", ")}. 블록마다 예문을 ${few[1]}개 이상 넣어 주세요.`;
+  }
+  if (/at least two intents/.test(detail)) return "학습할 블록이 둘 이상 있어야 해요.";
+  return detail;
+}
+
 function TrainError({ error }: { error: VersionJobError }) {
+  const { doc } = useDraft();
+  const labelOf = (intent: string) => (doc ? listBlocks(doc).find((b) => b.intent === intent)?.label : undefined) || intent;
   return (
     <div className="notice" data-tone="error" role="alert">
       <h2>학습하지 못했어요</h2>
@@ -95,11 +109,12 @@ function TrainError({ error }: { error: VersionJobError }) {
       )}
       {error.kind === "below_bar" && (
         <>
-          <p>{error.detail}</p>
+          <p>교차검증 정확도(macro-F1)가 배포 기준보다 낮아 버전을 만들지 않았어요. 점수가 낮은 블록에 예문을 더 넣어 보세요.</p>
+          <p className="mono status">{error.detail}</p>
           <LowestIntents data={error.perIntentF1} />
         </>
       )}
-      {error.kind === "training" && <p>{error.detail}</p>}
+      {error.kind === "training" && <p>{trainingMessage(error.detail, labelOf)}</p>}
       {error.kind === "no_draft" && <p>저장된 초안이 없어요. 블록을 만들고 저장한 뒤 다시 시도해 주세요.</p>}
       {error.kind === "unknown" && <p>{error.detail ?? "원인을 알 수 없어요."}</p>}
     </div>

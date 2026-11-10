@@ -5,7 +5,7 @@ import { createQueryClient, Providers } from "../App";
 import { formatDateTime, parseVersionJobError, parseVersionJobResult } from "../api/deploy";
 import { DraftProvider, useDraft } from "../draft/DraftContext";
 import { fakeEngine, type Handler, type Reply } from "../test/engine";
-import { Deploy } from "./Deploy";
+import { Deploy, trainingMessage } from "./Deploy";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -310,5 +310,19 @@ describe("api/deploy.ts의 방어적 파싱", () => {
   it("below_bar/training에 detail이 없으면 기본 문구를 써요", () => {
     expect(parseVersionJobError({ kind: "below_bar" })).toEqual({ kind: "below_bar", detail: "기준에 미달했어요", perIntentF1: null });
     expect(parseVersionJobError({ kind: "training" })).toEqual({ kind: "training", detail: "학습하지 못했어요" });
+  });
+});
+
+
+describe("trainingMessage", () => {
+  const label = (i: string) => ({ weather: "날씨 안내" } as Record<string, string>)[i] ?? i;
+  it("names the blocks with too few examples in Korean", () => {
+    expect(trainingMessage("intents need at least 5 examples for evaluation: ['weather', 'block_1']", label))
+      .toBe("예문이 5개보다 적은 블록이 있어 배포용 학습을 할 수 없어요: 날씨 안내, block_1. 블록마다 예문을 5개 이상 넣어 주세요.");
+  });
+  it("explains a bot with fewer than two intents, and keeps any other detail", () => {
+    expect(trainingMessage("need at least two intents", label)).toBe("학습할 블록이 둘 이상 있어야 해요.");
+    expect(trainingMessage("something else", label)).toBe("something else");
+    expect(trainingMessage("", label)).toBe("");
   });
 });
