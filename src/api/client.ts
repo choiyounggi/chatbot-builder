@@ -33,7 +33,7 @@ export class ConflictError extends ApiError {
 /** The request never got an answer from the engine (not running, wrong port). */
 export class EngineUnreachable extends Error {}
 
-async function request(path: string, init: RequestInit = {}): Promise<Response> {
+export async function request(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   const token = getToken();
   if (token) {
@@ -64,7 +64,7 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
   throw new ApiError(res.status, typeof detail === "string" ? detail : `HTTP ${res.status}`, problems);
 }
 
-const bot = (id: string) => `/v1/builder/bots/${encodeURIComponent(id)}`;
+export const bot = (id: string) => `/v1/builder/bots/${encodeURIComponent(id)}`;
 
 export async function listBots(): Promise<BotSummary[]> {
   const res = await request("/v1/builder/bots");
