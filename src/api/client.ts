@@ -1,5 +1,5 @@
 import { getToken, setToken } from "./token";
-import type { BotDocument, BotSummary, Draft, DraftSaved } from "./types";
+import type { BotDocument, BotSummary, Draft, DraftSaved, Job, TestTurn } from "./types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -87,4 +87,25 @@ export async function saveDraft(id: string, document: BotDocument, etag: string)
     body: JSON.stringify(document),
   });
   return (await res.json()) as DraftSaved;
+}
+
+/** Start fitting the saved draft for the test chat (a job; follow it with getJob). */
+export async function startTestBuild(id: string): Promise<Job> {
+  const res = await request(`${bot(id)}/test-builds`, { method: "POST" });
+  return (await res.json()) as Job;
+}
+
+export async function getJob(jobId: string): Promise<Job> {
+  const res = await request(`/v1/builder/jobs/${encodeURIComponent(jobId)}`);
+  return (await res.json()) as Job;
+}
+
+/** One turn with a test build. ApiError 410 once the build expired (never the live bot). */
+export async function testMessage(id: string, build: string, session: string, text: string): Promise<TestTurn> {
+  const res = await request(`${bot(id)}/test/${encodeURIComponent(build)}/sessions/${encodeURIComponent(session)}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  return (await res.json()) as TestTurn;
 }
