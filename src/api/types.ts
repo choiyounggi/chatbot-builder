@@ -9,6 +9,7 @@ export type BotSummary = S["BotSummaryOut"];
 export type DraftSaved = S["DraftSavedOut"];
 export type Job = S["JobOut"];
 export type TestTurn = S["TestTurnOut"];
+export type TestMessage = S["MessageOut"];
 export type BotDocument = BotDoc;
 
 export interface Draft {

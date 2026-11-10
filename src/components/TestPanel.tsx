@@ -1,17 +1,18 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { ApiError, testMessage } from "../api/client";
-import type { TestTurn } from "../api/types";
+import { ApiError, testMessage, testOpen } from "../api/client";
+import type { TestMessage, TestTurn } from "../api/types";
 import { useDraft } from "../draft/DraftContext";
 import { ErrorNotice } from "./ErrorNotice";
+import { QuickReplies, RichMessage } from "./RichMessage";
 
-interface Line {
-  from: "user" | "bot" | "note";
-  text: string;
-  quickReplies?: string[];
-  turn?: TestTurn;
-}
+type Line =
+  | { from: "user" | "note"; text: string }
+  | { from: "bot"; message: TestMessage; interactive: boolean; turn?: TestTurn };
 
 const newSession = () => `t-${Math.random().toString(36).slice(2, 10)}`;
+
+const botLines = (messages: TestMessage[], turn: TestTurn): Line[] =>
+  messages.map((message, i) => ({ from: "bot", message, interactive: true, turn: i === messages.length - 1 ? turn : undefined }));
 
 /** Chat with the newest test build of the saved draft, with what the engine decided each turn. */
 export function TestPanel() {
@@ -24,28 +25,45 @@ export function TestPanel() {
   const [error, setError] = useState<unknown>(null);
   const currentBuild = build.status === "ready" ? build.build : null;
   const seen = useRef<string | null>(currentBuild);
+  const opened = useRef<string | null>(null);
 
   useEffect(() => {
     if (currentBuild && seen.current && currentBuild !== seen.current) {
       setSession(newSession()); // a new build starts a new conversation
       setError(null);
-      setLines((l) => [...l.map((line) => ({ ...line, quickReplies: undefined })), // old buttons belong to the old session
+      setLines((l) => [...l.map((line) => (line.from === "bot" ? { ...line, interactive: false } : line)), // old buttons belong to the old session
         { from: "note", text: "새 테스트 빌드로 바꿨어요. 대화를 새로 시작해요." }]);
     }
     seen.current = currentBuild ?? seen.current;
   }, [currentBuild]);
 
-  /** Returns whether the message was sent. */
-  const send = async (message: string): Promise<boolean> => {
+  // The conversation starts with the bot's welcome messages (if any). Guarded by build+session so
+  // StrictMode's double-invoked effect, a new build, and "새 대화" each open exactly once.
+  useEffect(() => {
+    if (!currentBuild) return;
+    const key = `${currentBuild}:${session}`;
+    if (opened.current === key) return;
+    opened.current = key;
+    void (async () => {
+      try {
+        const turn = await testOpen(draft.botId, currentBuild, session);
+        setLines((l) => [...l, ...botLines(turn.messages, turn)]);
+      } catch (e) {
+        setError(e);
+      }
+    })();
+  }, [currentBuild, session, draft.botId]);
+
+  /** Returns whether the message was sent. `blockId`: a quick reply or button asked to start that
+   * block directly, without the engine trying to understand `message`. */
+  const send = async (message: string, blockId?: string): Promise<boolean> => {
     if (!currentBuild || !message.trim() || busy) return false;
     setBusy(true);
     setError(null);
     setLines((l) => [...l, { from: "user", text: message }]);
     try {
-      const turn = await testMessage(draft.botId, currentBuild, session, message);
-      setLines((l) => [...l, ...turn.messages.map((m, i) => ({
-        from: "bot" as const, text: m.text, quickReplies: m.quick_replies, turn: i === turn.messages.length - 1 ? turn : undefined,
-      }))]);
+      const turn = await testMessage(draft.botId, currentBuild, session, message, blockId);
+      setLines((l) => [...l, ...botLines(turn.messages, turn)]);
     } catch (e) {
       setError(e);
     } finally {
@@ -59,24 +77,22 @@ export function TestPanel() {
     void send(text);
     setText("");
   };
-  const lastBot = [...lines].reverse().find((l) => l.from === "bot");
+  const lastBot = [...lines].reverse().find((l): l is Extract<Line, { from: "bot" }> => l.from === "bot");
 
   return (
     <div className="test-panel">
       <BuildStatus />
-      <p className="visually-hidden" aria-live="polite">{lastBot?.text ?? ""}</p>
+      <p className="visually-hidden" aria-live="polite">{lastBot?.message.text ?? ""}</p>
       <ol className="chat" aria-label="테스트 대화">
         {lines.map((line, i) => (
           <li key={i} className={`bubble bubble--${line.from}`}>
-            <p>{line.text}</p>
-            {line.quickReplies && line.quickReplies.length > 0 && (
-              <div className="chips">
-                {line.quickReplies.map((q) => (
-                  <button key={q} type="button" className="btn btn--quiet chip-btn" onClick={() => void send(q)} disabled={!currentBuild || busy}>{q}</button>
-                ))}
-              </div>
-            )}
-            {line.turn && <TurnDebug turn={line.turn} />}
+            {line.from === "bot" ? (
+              <>
+                <RichMessage message={line.message} interactive={line.interactive} disabled={!currentBuild || busy} onAction={(m, b) => void send(m, b)} />
+                <QuickReplies message={line.message} interactive={line.interactive} disabled={!currentBuild || busy} onAction={(m, b) => void send(m, b)} />
+                {line.turn && <TurnDebug turn={line.turn} />}
+              </>
+            ) : <p>{line.text}</p>}
           </li>
         ))}
       </ol>
