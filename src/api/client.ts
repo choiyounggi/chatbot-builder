@@ -100,12 +100,21 @@ export async function getJob(jobId: string): Promise<Job> {
   return (await res.json()) as Job;
 }
 
-/** One turn with a test build. ApiError 410 once the build expired (never the live bot). */
-export async function testMessage(id: string, build: string, session: string, text: string): Promise<TestTurn> {
+/** One turn with a test build. `blockId`: the user pressed a quick reply or button that starts a block
+ * directly, without the engine trying to understand `text`. ApiError 410 once the build expired
+ * (never the live bot), 422 if no response of the bot offers that block. */
+export async function testMessage(id: string, build: string, session: string, text: string, blockId?: string): Promise<TestTurn> {
   const res = await request(`${bot(id)}/test/${encodeURIComponent(build)}/sessions/${encodeURIComponent(session)}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(blockId === undefined ? { text } : { text, block_id: blockId }),
   });
+  return (await res.json()) as TestTurn;
+}
+
+/** The user opened the conversation: a new session answers with the welcome block's messages (maybe
+ * none); an already-open session answers with none. ApiError 410 once the build expired. */
+export async function testOpen(id: string, build: string, session: string): Promise<TestTurn> {
+  const res = await request(`${bot(id)}/test/${encodeURIComponent(build)}/sessions/${encodeURIComponent(session)}/open`, { method: "POST" });
   return (await res.json()) as TestTurn;
 }

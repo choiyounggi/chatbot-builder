@@ -1,4 +1,5 @@
 import { render } from "@testing-library/react";
+import { StrictMode } from "react";
 import { MemoryRouter } from "react-router";
 import { vi } from "vitest";
 import { AppRoutes, createQueryClient, Providers } from "../App";
@@ -27,16 +28,19 @@ export function fakeEngine(routes: Record<string, Handler>, options: { token?: s
   return fetchMock;
 }
 
-export function renderAt(path: string) {
+/** `strict`: wrap in StrictMode (its double-invoked effects are how a test proves an effect guards
+ * against running twice, e.g. the bot-test panel opening a session only once). */
+export function renderAt(path: string, options: { strict?: boolean } = {}) {
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { ...client.getDefaultOptions().queries, retryDelay: 0 } });
-  return render(
+  const tree = (
     <Providers client={client}>
       <MemoryRouter initialEntries={[path]}>
         <AppRoutes />
       </MemoryRouter>
-    </Providers>,
+    </Providers>
   );
+  return render(options.strict ? <StrictMode>{tree}</StrictMode> : tree);
 }
 
 export const SAMPLE: BotSummary = {
@@ -56,6 +60,7 @@ export interface BotEngineOptions {
   failDraftAfter?: number; // GET draft answers 500 after this many reads
   buildFails?: boolean;
   chat?: (text: string, build: string) => Reply; // test chat replies (default: echo)
+  open?: (build: string, session: string) => Reply; // test open replies (default: no welcome messages)
   putGate?: Promise<void>; // PUT waits for this (to edit while a save is in flight)
   jobsForgotten?: boolean; // GET job answers 404 (the engine restarted)
 }
@@ -69,7 +74,8 @@ export function botEngine(options: BotEngineOptions = {}) {
     builds: 0,
     jobs: new Map<string, { status: string; result: unknown; error: unknown }>(),
     puts: [] as { etag: string | null; body: Record<string, unknown> }[],
-    chats: [] as { build: string; session: string; text: string }[],
+    chats: [] as { build: string; session: string; text: string; blockId: string | null }[],
+    opens: [] as { build: string; session: string }[],
     jobPolls: 0,
   };
   const auth = { token: options.token };
@@ -116,9 +122,18 @@ export function botEngine(options: BotEngineOptions = {}) {
       const chatMatch = key.match(/^POST \/v1\/builder\/bots\/sample\/test\/(\w+)\/sessions\/([\w-]+)\/messages$/);
       if (chatMatch) {
         return (init: RequestInit) => {
-          const text = (JSON.parse(String(init.body)) as { text: string }).text;
-          state.chats.push({ build: chatMatch[1] as string, session: chatMatch[2] as string, text });
-          return options.chat?.(text, chatMatch[1] as string) ?? { body: testTurn(chatMatch[1] as string, chatMatch[2] as string, `echo: ${text}`) };
+          const body = JSON.parse(String(init.body)) as { text: string; block_id?: string | null };
+          state.chats.push({ build: chatMatch[1] as string, session: chatMatch[2] as string, text: body.text, blockId: body.block_id ?? null });
+          return options.chat?.(body.text, chatMatch[1] as string) ?? { body: testTurn(chatMatch[1] as string, chatMatch[2] as string, `echo: ${body.text}`) };
+        };
+      }
+      const openMatch = key.match(/^POST \/v1\/builder\/bots\/sample\/test\/(\w+)\/sessions\/([\w-]+)\/open$/);
+      if (openMatch) {
+        return () => {
+          const build = openMatch[1] as string;
+          const session = openMatch[2] as string;
+          state.opens.push({ build, session });
+          return options.open?.(build, session) ?? { body: testTurn(build, session, "", { messages: [] }) };
         };
       }
       return undefined;
