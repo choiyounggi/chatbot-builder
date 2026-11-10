@@ -1,12 +1,14 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { type BlockOption, ReplyEditor } from "../components/ReplyEditor";
 import { useDraft } from "../draft/DraftContext";
 import {
   addParam, addReply, type Block, callersOf, createBlock, deleteBlock, kindOf, listBlocks, looseIntents, newBlockId,
-  paramUses, readBlock, removeParam, removeReply, type Reply, writeBlock,
+  paramUses, readBlock, removeParam, removeReply, systemScenarios, textReply, writeBlock,
 } from "../model/blocks";
-import { type BotDoc, type Step, SYSTEM_ENTITIES } from "../model/doc";
+import { type BotDoc, KAKAO, type Step, SYSTEM_ENTITIES } from "../model/doc";
+import { isSystemPage, SYSTEM_PAGES, SystemEditor } from "./SystemBlocks";
 
 const KIND_LABEL = { trigger: "발화로 시작", called: "다른 블록에서 호출" } as const;
 
@@ -26,6 +28,7 @@ export function Scenarios() {
   }, [state]);
   const doc = draft.doc;
   const blocks = useMemo(() => (doc ? listBlocks(doc) : []), [doc]);
+  const options: BlockOption[] = useMemo(() => blocks.map((b) => ({ id: b.id, label: b.label })), [blocks]);
 
   if (!doc) {
     return draft.query.isError
@@ -33,10 +36,12 @@ export function Scenarios() {
       : <div className="skeletons" role="status"><span className="visually-hidden">초안을 불러오는 중</span><div className="skeleton" /><div className="skeleton" /></div>;
   }
   const needle = filter.trim().toLowerCase();
-  const shown = needle
-    ? blocks.filter((b) => [b.id, b.label, ...b.examples].some((t) => t.toLowerCase().includes(needle)))
-    : blocks;
-  const selected = blockId && doc.scenarios[blockId] ? blockId : null;
+  const system = systemScenarios(doc);
+  const shown = blocks.filter((b) => !system.has(b.id)
+    && (!needle || [b.id, b.label, b.group, ...b.examples].some((t) => t.toLowerCase().includes(needle))));
+  const groups = [...new Set(shown.map((b) => b.group))].sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b, "ko")));
+  const page = isSystemPage(blockId) ? blockId : null;
+  const selected = !page && blockId && doc.scenarios[blockId] ? blockId : null;
 
   return (
     <>
@@ -52,20 +57,39 @@ export function Scenarios() {
             <button type="button" className="btn" onClick={() => setCreating((v) => !v)} aria-expanded={creating}>새 블록</button>
           </div>
           {creating && <NewBlockForm onDone={() => setCreating(false)} />}
-          <ul>
-            {shown.map((b) => (
-              <li key={b.id}>
-                <Link to={blockPath(draft.botId, b.id)} aria-current={b.id === selected ? "page" : undefined}>
-                  <span className="name">{b.label || b.id}</span>
-                  <span className="meta">{KIND_LABEL[kindOf(b)]}{b.intent ? ` · 발화 ${b.examples.length}` : ""}</span>
+          <h2 className="list-group">기본 시나리오</h2>
+          <ul aria-label="기본 시나리오">
+            {SYSTEM_PAGES.map((p) => (
+              <li key={p.id}>
+                <Link to={blockPath(draft.botId, p.id)} aria-current={p.id === page ? "page" : undefined}>
+                  <span className="name">{p.label}</span>
+                  <span className="meta">{p.meta}</span>
                 </Link>
               </li>
             ))}
           </ul>
+          {groups.map((group) => (
+            <div key={group || "-"}>
+              {(group || groups.length > 1) && <h2 className="list-group">{group || "묶음 없음"}</h2>}
+              <ul aria-label={group ? `블록 묶음 ${group}` : "블록"}>
+                {shown.filter((b) => b.group === group).map((b) => (
+                  <li key={b.id}>
+                    <Link to={blockPath(draft.botId, b.id)} aria-current={b.id === selected ? "page" : undefined}>
+                      <span className="name">{b.label || b.id}</span>
+                      <span className="meta">{KIND_LABEL[kindOf(b)]}{b.intent ? ` · 발화 ${b.examples.length}` : ""}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
           {shown.length === 0 && <p className="status">{needle ? "찾는 블록이 없어요." : "아직 블록이 없어요. 새 블록을 만들어 보세요."}</p>}
           <LooseIntents doc={doc} />
         </section>
-        {selected ? <BlockEditor key={selected} id={selected} /> : (
+        {page ? (
+          <SystemEditor key={page} page={page} blocks={options}
+                        renderBlock={(id) => <BlockEditor key={id} id={id} blocks={options} embedded />} />
+        ) : selected ? <BlockEditor key={selected} id={selected} blocks={options} /> : (
           <section className="editor empty"><p>왼쪽에서 블록을 고르거나 새 블록을 만드세요.</p></section>
         )}
       </div>
@@ -116,12 +140,13 @@ function NewBlockForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-function BlockEditor({ id }: { id: string }) {
+function BlockEditor({ id, blocks, embedded = false }: { id: string; blocks: BlockOption[]; embedded?: boolean }) {
   const draft = useDraft();
   const navigate = useNavigate();
   const [problem, setProblem] = useState<string | null>(null);
   const doc = draft.doc as BotDoc;
   const block = readBlock(doc, id);
+  const d = () => draft.doc as BotDoc;
   const change = (next: (b: Block, d: BotDoc) => Block) => draft.update((d) => (d.scenarios[id] ? writeBlock(d, next(readBlock(d, id), d)) : d));
   const entities = [...Object.keys(doc.entities ?? {}), ...SYSTEM_ENTITIES.map((e) => e.id)];
   const label = useRef<HTMLInputElement>(null);
@@ -130,10 +155,11 @@ function BlockEditor({ id }: { id: string }) {
     if ((state as { focus?: string } | null)?.focus === "label") label.current?.focus(); // just created
   }, [state]);
 
+  const groups = [...new Set(Object.values(doc.scenarios).map((s) => s.group).filter((g): g is string => !!g))];
   const remove = () => {
     const callers = callersOf(doc, id);
     if (callers.length > 0) {
-      setProblem(`다른 블록이 이 블록을 부르고 있어요: ${callers.join(", ")}. 그 블록에서 먼저 빼 주세요.`);
+      setProblem(`이 블록을 쓰는 곳이 있어요: ${callers.join(", ")}. 그곳에서 먼저 빼 주세요.`);
       return;
     }
     draft.update((d) => (callersOf(d, id).length > 0 ? d : deleteBlock(d, id)));
@@ -158,15 +184,23 @@ function BlockEditor({ id }: { id: string }) {
         </div>
         <span className="chip">{KIND_LABEL[kindOf(block)]}</span>
         <span className="mono status">{block.id}</span>
-        <button type="button" className="btn btn--quiet" onClick={remove}>블록 삭제</button>
+        {!embedded && <button type="button" className="btn btn--quiet" onClick={remove}>블록 삭제</button>}
       </div>
+      {!embedded && (
+        <div className="field">
+          <label htmlFor="block-group">블록 묶음</label>
+          <input id="block-group" className="input" list="block-groups" value={block.group} placeholder="묶음 없음"
+                 onChange={(e) => change((b) => ({ ...b, group: e.target.value }))} />
+          <datalist id="block-groups">{groups.map((g) => <option key={g} value={g} />)}</datalist>
+        </div>
+      )}
       {problem && <p className="notice" data-tone="warn" role="alert">{problem}</p>}
 
       {block.intent && <Examples block={block} onChange={(examples) => change((b) => ({ ...b, examples }))} />}
 
       <fieldset className="group">
         <legend>파라미터</legend>
-        <p className="status">값이 없으면 봇이 되묻는 정보예요. 블록이 응답하기 전에 차례로 받아요.</p>
+        <p className="status">블록이 응답하기 전에 차례로 받는 정보예요. 필수면 값이 없을 때 되묻고, 필수가 아니면 말에 있을 때만 받아요(없으면 기본값).</p>
         {block.params.map((p) => (
           <div className="param" key={p.name}>
             <span className="mono">{p.name}</span>
@@ -175,10 +209,28 @@ function BlockEditor({ id }: { id: string }) {
                     onChange={(e) => change((b) => ({ ...b, params: b.params.map((x) => x.name === p.name ? { ...x, entity: e.target.value } : x) }))}>
               {(entities.includes(p.entity) ? entities : [p.entity, ...entities]).map((e) => <option key={e} value={e}>{e}</option>)}
             </select>
-            <label className="visually-hidden" htmlFor={`ask-${p.name}`}>{p.name} 되묻기 질문</label>
-            <input id={`ask-${p.name}`} className="input" placeholder="되묻기 질문 (예: 어느 지역이요?)" value={p.ask.texts[0] ?? ""}
-                   onChange={(e) => change((b) => ({ ...b, params: b.params.map((x) => x.name === p.name
-                     ? { ...x, ask: { ...x.ask, texts: [e.target.value, ...x.ask.texts.slice(1)] } } : x) }))} />
+            <label className="check">
+              <input type="checkbox" checked={p.required} aria-label={`${p.name} 필수`}
+                     onChange={(e) => change((b) => ({ ...b, params: b.params.map((x) => x.name === p.name
+                       ? { ...x, required: e.target.checked, default: e.target.checked ? null : x.default,
+                           // a required parameter needs a question; an optional one keeps it only if it says something
+                           ask: e.target.checked ? x.ask ?? textReply(newAsk(d(), b, x.name))
+                             : x.ask && x.ask.texts.some((t) => t.trim()) ? x.ask : null } : x) }))} /> 필수
+            </label>
+            {p.required ? (
+              <>
+                <label className="visually-hidden" htmlFor={`ask-${p.name}`}>{p.name} 되묻기 질문</label>
+                <input id={`ask-${p.name}`} className="input" placeholder="되묻기 질문 (예: 어느 지역이요?)" value={p.ask?.texts[0] ?? ""}
+                       onChange={(e) => change((b) => ({ ...b, params: b.params.map((x) => x.name === p.name && x.ask
+                         ? { ...x, ask: { ...x.ask, texts: [e.target.value, ...x.ask.texts.slice(1)] } } : x) }))} />
+              </>
+            ) : (
+              <>
+                <label className="visually-hidden" htmlFor={`default-${p.name}`}>{p.name} 기본값</label>
+                <input id={`default-${p.name}`} className="input" placeholder="기본값 (비우면 값 없이 진행)" value={String(p.default ?? "")}
+                       onChange={(e) => change((b) => ({ ...b, params: b.params.map((x) => x.name === p.name ? { ...x, default: e.target.value } : x) }))} />
+              </>
+            )}
             <button type="button" className="btn btn--quiet" onClick={() => dropParam(p.name)}
                     aria-label={`파라미터 ${p.name} 삭제`}>삭제</button>
           </div>
@@ -190,11 +242,14 @@ function BlockEditor({ id }: { id: string }) {
       <fieldset className="group">
         <legend>봇 응답</legend>
         {block.replies.map((reply, index) => (
-          <ReplyEditor key={index} reply={reply} index={index}
+          <ReplyEditor key={index} reply={reply} index={index} blocks={blocks}
                        onChange={(next) => change((b) => ({ ...b, replies: b.replies.map((r, i) => (i === index ? next : r)) }))}
                        onRemove={() => change((b) => removeReply(b, index))} />
         ))}
         <button type="button" className="btn" onClick={() => change((b, d) => addReply(d, b))}>응답 추가</button>
+        {block.replies.length > KAKAO.bubbles && (
+          <p className="help" data-tone="warn">카카오 채널은 한 블록에서 말풍선을 {KAKAO.bubbles}개까지만 보여 줘요.</p>
+        )}
       </fieldset>
 
       <details className="group">
@@ -238,62 +293,7 @@ function Examples({ block, onChange }: { block: Block; onChange: (examples: stri
   );
 }
 
-function ReplyEditor({ reply, index, onChange, onRemove }: { reply: Reply; index: number; onChange: (r: Reply) => void; onRemove: () => void }) {
-  const random = reply.texts.length > 1;
-  const n = index + 1;
-  return (
-    <div className="reply">
-      <div className="reply-head">
-        <span className="status">응답 {n}{random ? " · 랜덤" : ""}</span>
-        <span className="mono status">{reply.response}</span>
-        <button type="button" className="btn btn--quiet" onClick={onRemove} aria-label={`응답 ${n} 삭제`}>삭제</button>
-      </div>
-      {reply.sharedWith ? (
-        <p className="status">{reply.sharedWith}와 같은 응답이에요. 그곳에서 고치면 여기도 바뀌어요.</p>
-      ) : (
-        <>
-          {reply.missing && <p className="help" data-tone="warn">초안에 이 응답({reply.response})이 없어요. 문구를 쓰면 새로 만들어져요.</p>}
-          {(reply.texts.length ? reply.texts : [""]).map((text, i) => (
-            <div className="reply-text" key={i}>
-              <label className="visually-hidden" htmlFor={`reply-${index}-${i}`}>응답 {n} 문구 {i + 1}</label>
-              <textarea id={`reply-${index}-${i}`} className="input" rows={2} value={text}
-                        onChange={(e) => onChange({ ...reply, texts: (reply.texts.length ? reply.texts : [""]).map((t, j) => (j === i ? e.target.value : t)) })} />
-              {random && (
-                <button type="button" className="btn btn--quiet" aria-label={`응답 ${n} 문구 ${i + 1} 삭제`}
-                        onClick={() => onChange({ ...reply, texts: reply.texts.filter((_, j) => j !== i) })}>삭제</button>
-              )}
-            </div>
-          ))}
-          <button type="button" className="btn btn--quiet" onClick={() => onChange({ ...reply, texts: [...(reply.texts.length ? reply.texts : [""]), ""] })}>
-            랜덤 문구 추가
-          </button>
-          <QuickReplies id={`qr-${index}`} label={`응답 ${n} 바로연결 버튼`} value={reply.quickReplies}
-                        onChange={(quickReplies) => onChange({ ...reply, quickReplies })} />
-        </>
-      )}
-    </div>
-  );
-}
-
 export const parseList = (text: string) => text.split(",").map((q) => q.trim()).filter(Boolean);
-
-/** A comma-separated list edited as text: the text is kept while typing ("서울, " stays). */
-function QuickReplies({ id, label, value, onChange }: { id: string; label: string; value: string[]; onChange: (v: string[]) => void }) {
-  const [text, setText] = useState(value.join(", "));
-  const [last, setLast] = useState(value);
-  if (last.join("\u0000") !== value.join("\u0000") && parseList(text).join("\u0000") !== value.join("\u0000")) {
-    setLast(value); // changed from outside (undo, reload): show it
-    setText(value.join(", "));
-  }
-  return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <input id={id} className="input" value={text} placeholder="서울, 부산, 제주"
-             onChange={(e) => { setText(e.target.value); setLast(parseList(e.target.value)); onChange(parseList(e.target.value)); }} />
-      <p className="help">쉼표로 구분해요(버튼 이름에는 쉼표를 쓸 수 없어요). 누르면 그 글자를 보낸 것처럼 동작해요. 버튼 하나는 40자까지예요.</p>
-    </div>
-  );
-}
 
 function describe(step: Step): string {
   if ("collect" in step) return `파라미터 받기: ${step.collect}`;
@@ -301,4 +301,12 @@ function describe(step: Step): string {
   if ("action" in step) return `스킬 실행: ${step.action}`;
   if ("call" in step) return `블록 호출: ${step.call}`;
   return `분기: ${step.branch.on} → ${Object.entries(step.branch.cases).map(([k, v]) => `${k}:${v}`).join(", ")}`;
+}
+
+/** A response id for a parameter's question that the document and the block do not use yet. */
+function newAsk(doc: BotDoc, block: Block, param: string): string {
+  const taken = new Set([...Object.keys(doc.responses), ...block.params.flatMap((p) => (p.ask ? [p.ask.response] : []))]);
+  let id = `${block.id}_ask_${param}`;
+  for (let n = 2; taken.has(id); n++) id = `${block.id}_ask_${param}_${n}`;
+  return id;
 }

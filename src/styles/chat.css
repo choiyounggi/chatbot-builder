@@ -1,0 +1,22 @@
+/* Rich message bodies (simple_image, basic_card, list_card, carousel) inside a bot-test bubble.
+ * Tokens from tokens.css only; thin rules, 6px radius, no raw colors/fonts. */
+
+.rich-image { display: block; max-width: 100%; border-radius: var(--radius-md); }
+
+.rich-card { display: grid; gap: var(--space-2xs); max-width: 100%; }
+.rich-card__image { display: block; max-width: 100%; border-radius: var(--radius-md); }
+.rich-card__title { margin: 0; font-weight: 600; color: var(--color-ink); }
+.rich-card__desc { margin: 0; color: var(--color-ink-2); font-size: var(--text-sm); }
+
+.rich-list { display: grid; gap: var(--space-xs); max-width: 100%; }
+.rich-list__header { margin: 0; font-weight: 600; color: var(--color-ink); }
+.rich-list__items { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2xs); }
+.rich-list__item { display: flex; gap: var(--space-xs); align-items: flex-start; border-top: var(--rule-width) solid var(--color-rule); padding-top: var(--space-2xs); }
+.rich-list__item:first-child { border-top: none; padding-top: 0; }
+.rich-list__image { flex: 0 0 auto; width: 2.5rem; height: 2.5rem; object-fit: cover; border-radius: var(--radius-sm); }
+.rich-list__body { display: grid; gap: var(--space-3xs); min-width: 0; }
+.rich-list__title { color: var(--color-ink); font-size: var(--text-sm); }
+.rich-list__desc { margin: 0; color: var(--color-muted); font-size: var(--text-xs); }
+
+.rich-carousel { display: flex; gap: var(--space-xs); max-width: 100%; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: var(--space-2xs); }
+.rich-carousel__item { flex: 0 0 auto; width: min(14rem, 85%); /* the next card peeks in: there is more to scroll */ scroll-snap-align: start; border: var(--rule-width) solid var(--color-rule); border-radius: var(--radius-md); padding: var(--space-xs); }

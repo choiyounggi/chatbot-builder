@@ -2,13 +2,16 @@
 // a block is one scenario; a trigger block also owns the intent that starts it.
 // read → write must give back the same document (tested over the whole sample bot).
 import {
-  type BotDoc, newId, REQUIRED_RESPONSES, type ResponseDoc, responseTexts, type ScenarioDoc, type Step, withTexts, without,
+  blockTargets, type BotDoc, newId, type QuickReplyDoc, quickReplyLabel, REQUIRED_RESPONSES, type ReplyKind, type ResponseDoc,
+  type RichBodyDoc, richOf, responseTexts, type ScenarioDoc, type SlotDoc, type Step, withRich, withTexts, without,
 } from "./doc";
 
 export interface Reply {
   response: string; // response id
-  texts: string[]; // one text, or several variants picked at random
-  quickReplies: string[];
+  kind: ReplyKind; // text, or one rich body
+  texts: string[]; // kind "text": one text, or several variants picked at random
+  rich: RichBodyDoc | null; // the rich body (kind other than "text")
+  quickReplies: QuickReplyDoc[]; // as stored: a string sends itself
   /** Another reply or question of this block shows the same response: edit it there (read-only here). */
   sharedWith?: string;
   /** The document names this response but does not define it. Written only once given text. */
@@ -18,12 +21,15 @@ export interface Reply {
 export interface Param {
   name: string; // slot name
   entity: string; // entity id or sys.*
-  ask: Reply; // the re-ask question
+  ask: Reply | null; // the re-ask question (optional parameters may have none)
+  required: boolean; // false: taken from the user's words, never asked
+  default: string | number | null; // optional parameters: the value when the user gave none
 }
 
 export interface Block {
   id: string; // scenario id
   label: string;
+  group: string; // folder in the block list ("" = none)
   intent: string | null; // trigger intent; null: started only by other blocks (call / branch)
   examples: string[];
   params: Param[];
@@ -35,12 +41,16 @@ export type BlockKind = "trigger" | "called";
 
 export const kindOf = (block: Pick<Block, "intent">): BlockKind => (block.intent ? "trigger" : "called");
 
-const replyOf = (doc: BotDoc, id: string, sharedWith?: string): Reply => {
+/** A response as the editor sees it. `sharedWith`: shown read-only, owned elsewhere. */
+export const replyOf = (doc: BotDoc, id: string, sharedWith?: string): Reply => {
   const stored = doc.responses[id];
+  const rich = richOf(stored);
   return {
     response: id,
-    texts: stored ? responseTexts(stored) : [],
-    quickReplies: [...(stored?.quick_replies ?? [])],
+    kind: rich?.kind ?? "text",
+    texts: stored && !rich ? responseTexts(stored) : rich ? [] : [],
+    rich: rich ? structuredClone(rich.body) : null,
+    quickReplies: structuredClone(stored?.quick_replies ?? []),
     ...(sharedWith ? { sharedWith } : {}),
     ...(stored ? {} : { missing: true }),
   };
@@ -57,8 +67,12 @@ export function readBlock(doc: BotDoc, id: string): Block {
     if (!first) owner.set(response, where);
     return first;
   };
-  const params = Object.entries(scenario.slots ?? {}).map(([name, slot]) => (
-    { name, entity: slot.entity, ask: replyOf(doc, slot.ask, claim(slot.ask, `파라미터 ${name}의 질문`)) }));
+  const params = Object.entries(scenario.slots ?? {}).map(([name, slot]): Param => ({
+    name, entity: slot.entity,
+    ask: slot.ask ? replyOf(doc, slot.ask, claim(slot.ask, `파라미터 ${name}의 질문`)) : null,
+    required: slot.required !== false,
+    default: slot.default ?? null,
+  }));
   let n = 0;
   const replies = scenario.steps.flatMap((step) => {
     if (!("respond" in step)) return [];
@@ -68,6 +82,7 @@ export function readBlock(doc: BotDoc, id: string): Block {
   return {
     id,
     label: scenario.label ?? "",
+    group: scenario.group ?? "",
     intent,
     examples: intent ? [...(doc.intents?.[intent]?.examples ?? [])] : [],
     params,
@@ -86,10 +101,26 @@ export function looseIntents(doc: BotDoc): string[] {
   return Object.keys(doc.intents ?? {}).filter((id) => !triggers.has(id));
 }
 
-function writeResponse(doc: BotDoc, reply: Reply): void {
+/** Write a reply into the document's responses (in place). */
+export function writeResponse(doc: BotDoc, reply: Reply): void {
   if (reply.sharedWith) return; // the owning reply writes it
-  if (reply.missing && reply.texts.every((t) => !t) && reply.quickReplies.length === 0) return; // still undefined
-  doc.responses[reply.response] = withTexts(doc.responses[reply.response], reply.texts.length ? reply.texts : [""], reply.quickReplies);
+  const empty = reply.kind === "text" ? reply.texts.every((t) => !t) : reply.rich === null;
+  if (reply.missing && empty && reply.quickReplies.length === 0) return; // still undefined
+  const stored = doc.responses[reply.response];
+  doc.responses[reply.response] = reply.kind !== "text" && reply.rich
+    ? withRich(stored, reply.kind, reply.rich, reply.quickReplies)
+    : withTexts(stored, reply.texts.length ? reply.texts : [""], reply.quickReplies);
+}
+
+/** One slot as stored: keeps fields the builder does not edit (e.g. validation); writes only what differs from the defaults. */
+function slotDoc(before: SlotDoc | undefined, param: Param): SlotDoc {
+  const slot: SlotDoc = { ...before, entity: param.entity };
+  if (param.ask) slot.ask = param.ask.response;
+  else if (slot.ask !== null) delete slot.ask; // an explicit null stays
+  if (!param.required || before?.required !== undefined) slot.required = param.required;
+  if (param.default !== null && param.default !== "" && !param.required) slot.default = param.default;
+  else if (slot.default !== null || param.required === false) delete slot.default;
+  return slot;
 }
 
 /** The document with this block written into it (a new object; `doc` is not changed). */
@@ -98,15 +129,17 @@ export function writeBlock(doc: BotDoc, block: Block): BotDoc {
   const before: ScenarioDoc | undefined = next.scenarios[block.id];
   const scenario: ScenarioDoc = { ...before, steps: block.steps.map((s) => structuredClone(s)) };
   if (block.label || before?.label !== undefined) scenario.label = block.label;
+  if (block.group.trim()) scenario.group = block.group; // as typed: trimming here would eat the space being typed
+  else if (scenario.group !== null) delete scenario.group;
   if (block.params.length > 0 || before?.slots !== undefined) {
-    scenario.slots = Object.fromEntries(block.params.map((p) => [p.name, { entity: p.entity, ask: p.ask.response }]));
+    scenario.slots = Object.fromEntries(block.params.map((p) => [p.name, slotDoc(before?.slots?.[p.name], p)]));
   }
   if (block.intent) {
     scenario.trigger = { intent: block.intent };
     next.intents = { ...next.intents, [block.intent]: { ...next.intents?.[block.intent], examples: [...block.examples] } };
   }
   next.scenarios[block.id] = scenario;
-  for (const param of block.params) writeResponse(next, param.ask);
+  for (const param of block.params) if (param.ask) writeResponse(next, param.ask);
   for (const reply of block.replies) writeResponse(next, reply);
   // a removed reply or parameter leaves its response behind: drop it unless something else uses it
   if (before) {
@@ -121,8 +154,10 @@ export function writeBlock(doc: BotDoc, block: Block): BotDoc {
 
 export function addReply(doc: BotDoc, block: Block, text = ""): Block {
   const response = newId(`${block.id}_reply`, [...Object.keys(doc.responses), ...block.replies.map((r) => r.response)]);
-  return { ...block, replies: [...block.replies, { response, texts: [text], quickReplies: [] }], steps: [...block.steps, { respond: response }] };
+  return { ...block, replies: [...block.replies, textReply(response, text)], steps: [...block.steps, { respond: response }] };
 }
+
+export const textReply = (response: string, text = ""): Reply => ({ response, kind: "text", texts: [text], rich: null, quickReplies: [] });
 
 export function removeReply(block: Block, index: number): Block {
   const reply = block.replies[index];
@@ -134,12 +169,12 @@ export function removeReply(block: Block, index: number): Block {
 
 export function addParam(doc: BotDoc, block: Block, entity: string): Block {
   const name = newId("param", block.params.map((p) => p.name));
-  const ask = newId(`${block.id}_ask`, [...Object.keys(doc.responses), ...block.params.map((p) => p.ask.response)]);
+  const ask = newId(`${block.id}_ask`, [...Object.keys(doc.responses), ...block.params.flatMap((p) => (p.ask ? [p.ask.response] : []))]);
   // parameters are asked before anything else runs, after the ones already there (like the engine's collect order)
   const lastCollect = block.steps.reduce((at, step, i) => ("collect" in step ? i : at), -1);
   const steps = [...block.steps];
   steps.splice(lastCollect + 1, 0, { collect: name });
-  return { ...block, params: [...block.params, { name, entity, ask: { response: ask, texts: [""], quickReplies: [] } }], steps };
+  return { ...block, params: [...block.params, { name, entity, ask: textReply(ask), required: true, default: null }], steps };
 }
 
 /** Where this block's texts, skill arguments or branches read the parameter ({{ slots.name }}). */
@@ -147,10 +182,10 @@ export function paramUses(doc: BotDoc, block: Block, name: string): string[] {
   const pattern = new RegExp(`\\{\\{\\s*slots\\.${name}\\b`);
   const uses: string[] = [];
   const onError = doc.scenarios[block.id]?.on_error;
-  const responses = new Set([...block.replies.map((r) => r.response), ...block.params.filter((p) => p.name !== name).map((p) => p.ask.response),
-    ...(onError ? [onError] : [])]);
+  const responses = new Set([...block.replies.map((r) => r.response),
+    ...block.params.filter((p) => p.name !== name && p.ask).map((p) => (p.ask as Reply).response), ...(onError ? [onError] : [])]);
   for (const response of responses) {
-    if (responseTexts(doc.responses[response]).some((t) => pattern.test(t))) uses.push(`응답 ${response}`);
+    if (responseStrings(doc.responses[response]).some((t) => pattern.test(t))) uses.push(`응답 ${response}`);
   }
   for (const step of block.steps) {
     if ("action" in step && Object.values(step.args ?? {}).some((v) => pattern.test(v))) uses.push(`스킬 ${step.action}`);
@@ -199,30 +234,67 @@ export function createBlock(doc: BotDoc, input: NewBlock, preferredId?: string):
   const id = preferredId && !taken.includes(preferredId) ? preferredId : newId("block", taken);
   const response = newId(`${id}_reply`, Object.keys(doc.responses));
   const block: Block = {
-    id, label: input.label.trim(), intent: id, examples: [input.example.trim()], params: [],
-    replies: [{ response, texts: [input.reply.trim()], quickReplies: [] }], steps: [{ respond: response }],
+    id, label: input.label.trim(), group: "", intent: id, examples: [input.example.trim()], params: [],
+    replies: [textReply(response, input.reply.trim())], steps: [{ respond: response }],
   };
   return { doc: writeBlock(doc, block), id };
 }
 
-function responseRefs(doc: BotDoc): Set<string> {
+/** Responses something still uses: the engine's own, steps, questions, error and system notices. */
+export function responseRefs(doc: BotDoc): Set<string> {
   const refs = new Set<string>(REQUIRED_RESPONSES);
   for (const scenario of Object.values(doc.scenarios)) {
     for (const step of scenario.steps) if ("respond" in step) refs.add(step.respond);
-    for (const slot of Object.values(scenario.slots ?? {})) refs.add(slot.ask);
+    for (const slot of Object.values(scenario.slots ?? {})) {
+      if (slot.ask) refs.add(slot.ask);
+      if (slot.validation?.fail) refs.add(slot.validation.fail);
+    }
     if (scenario.on_error) refs.add(scenario.on_error);
   }
+  const notice = doc.system?.timeout?.notice;
+  if (notice) refs.add(notice);
   return refs;
 }
 
-/** Blocks that start `id` through call / branch steps: deleting it would break them. */
+/** Every string of a response that may hold a {{ template }}: texts, rich fields, quick replies. */
+export function responseStrings(response: ResponseDoc | undefined): string[] {
+  if (!response) return [];
+  const strings = (value: unknown, key = ""): string[] => {
+    if (typeof value === "string") return ["action", "type", "block_id"].includes(key) ? [] : [value];
+    if (Array.isArray(value)) return value.flatMap((v) => strings(v, key));
+    if (value && typeof value === "object") return Object.entries(value).flatMap(([k, v]) => strings(v, k));
+    return [];
+  };
+  const rich = richOf(response);
+  return [...(rich ? strings(rich.body) : responseTexts(response)), ...strings(response.quick_replies ?? [])];
+}
+
+/** What starts `id` from elsewhere: other blocks' call / branch steps, buttons and quick replies that
+ * move to it, and the welcome / escape settings. Deleting it would break them. */
 export function callersOf(doc: BotDoc, id: string): string[] {
-  return Object.entries(doc.scenarios)
+  const steps = Object.entries(doc.scenarios)
     .filter(([sid, s]) => sid !== id && s.steps.some((step) =>
       ("call" in step && step.call === id)
       || ("branch" in step && (Object.values(step.branch.cases).includes(id) || step.branch.default === id))))
     .map(([sid]) => sid);
+  // responses that go away with the block (used by it alone) do not count: its own "다시" button is fine
+  const others = responseRefs({ ...doc, scenarios: without(doc.scenarios, id) });
+  const own = [...responseRefs({ ...doc, scenarios: { [id]: doc.scenarios[id] ?? { steps: [] } }, system: {} })].filter((r) => !others.has(r));
+  const buttons = Object.entries(doc.responses).filter(([rid, r]) => !own.includes(rid) && blockTargets(r).includes(id))
+    .map(([rid]) => `버튼(응답 ${rid})`);
+  const system = [...(doc.system?.welcome === id ? ["웰컴"] : []), ...(doc.system?.escape?.scenario === id ? ["탈출"] : [])];
+  return [...steps, ...buttons, ...system];
 }
+
+/** Blocks only the welcome / escape settings start (no trigger): edited under 기본 시나리오, not listed
+ * with the other blocks. A trigger block chosen there stays in the list too. */
+export function systemScenarios(doc: BotDoc): Set<string> {
+  return new Set([doc.system?.welcome, doc.system?.escape?.scenario]
+    .filter((s): s is string => !!s && !!doc.scenarios[s] && !doc.scenarios[s]?.trigger));
+}
+
+/** Labels shown on a response's quick replies (for previews and warnings). */
+export const replyLabels = (reply: Reply): string[] => reply.quickReplies.map(quickReplyLabel);
 
 /** Delete a block, its trigger intent and the responses nothing else uses. Throws when other blocks call it. */
 export function deleteBlock(doc: BotDoc, id: string): BotDoc {

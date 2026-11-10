@@ -55,6 +55,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bots/{bot}/sessions/{session}/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Session
+         * @description The user opened the conversation: a new session answers with the welcome block (if any);
+         *     an existing one with no messages.
+         */
+        post: operations["open_session_v1_bots__bot__sessions__session__open_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/builder/bots": {
         parameters: {
             query?: never;
@@ -190,6 +211,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/builder/bots/{bot}/test/{build}/sessions/{session}/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Open
+         * @description Open a test chat: the welcome block of a new session (410 like messages).
+         */
+        post: operations["test_open_v1_builder_bots__bot__test__build__sessions__session__open_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/builder/bots/{bot}/versions": {
         parameters: {
             query?: never;
@@ -272,6 +313,16 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** BasicCard */
+        BasicCard: {
+            /** Buttons */
+            buttons?: components["schemas"]["Button"][];
+            /** Description */
+            description?: string | null;
+            thumbnail?: components["schemas"]["Thumbnail"] | null;
+            /** Title */
+            title?: string | null;
+        };
         /**
          * BotDocument
          * @description What a builder edits and stores: a bot without its computed version.
@@ -313,6 +364,8 @@ export interface components {
              *     }
              */
             settings: components["schemas"]["Settings"];
+            /** @default {} */
+            system: components["schemas"]["System"];
         };
         /** BotListOut */
         BotListOut: {
@@ -351,10 +404,42 @@ export interface components {
         BranchStep: {
             branch: components["schemas"]["Branch"];
         };
+        /**
+         * Button
+         * @description Kakao card button: webLink / message / block / phone.
+         */
+        Button: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "web_link" | "message" | "block" | "phone";
+            /** Block Id */
+            block_id?: string | null;
+            /** Label */
+            label: string;
+            /** Message Text */
+            message_text?: string | null;
+            /** Phone Number */
+            phone_number?: string | null;
+            /** Web Link Url */
+            web_link_url?: string | null;
+        };
         /** CallStep */
         CallStep: {
             /** Call */
             call: string;
+        };
+        /** Carousel */
+        Carousel: {
+            /** Items */
+            items: components["schemas"]["BasicCard"][];
+            /**
+             * Type
+             * @default basic_card
+             * @constant
+             */
+            type: "basic_card";
         };
         /** CollectStep */
         CollectStep: {
@@ -414,6 +499,16 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
+        /**
+         * Escape
+         * @description Kakao's 탈출 block: these exact phrases end every running scenario.
+         */
+        Escape: {
+            /** Phrases */
+            phrases: string[];
+            /** Scenario */
+            scenario?: string | null;
+        };
         /** FrameOut */
         FrameOut: {
             /** Awaiting */
@@ -468,6 +563,34 @@ export interface components {
              */
             status: "queued" | "running" | "done" | "failed";
         };
+        /** Link */
+        Link: {
+            /** Web */
+            web: string;
+        };
+        /** ListCard */
+        ListCard: {
+            /** Buttons */
+            buttons?: components["schemas"]["Button"][];
+            header: components["schemas"]["ListHeader"];
+            /** Items */
+            items: components["schemas"]["ListItem"][];
+        };
+        /** ListHeader */
+        ListHeader: {
+            /** Title */
+            title: string;
+        };
+        /** ListItem */
+        ListItem: {
+            /** Description */
+            description?: string | null;
+            /** Image Url */
+            image_url?: string | null;
+            link?: components["schemas"]["Link"] | null;
+            /** Title */
+            title: string;
+        };
         /** LiveOut */
         LiveOut: {
             /** Bot */
@@ -477,17 +600,31 @@ export interface components {
         };
         /** MessageIn */
         MessageIn: {
+            /** Block Id */
+            block_id?: string | null;
             /** Text */
             text: string;
         };
         /** MessageOut */
         MessageOut: {
+            basic_card?: components["schemas"]["BasicCard"] | null;
+            carousel?: components["schemas"]["Carousel"] | null;
+            list_card?: components["schemas"]["ListCard"] | null;
             /** Quick Replies */
             quick_replies: string[];
+            /** Quick Reply Items */
+            quick_reply_items?: components["schemas"]["QuickReplyOut"][];
             /** Response */
             response: string;
+            simple_image?: components["schemas"]["SimpleImage"] | null;
             /** Text */
             text: string;
+            /**
+             * Type
+             * @default text
+             * @enum {string}
+             */
+            type: "text" | "simple_image" | "basic_card" | "list_card" | "carousel";
         };
         /** MisunderstoodItem */
         MisunderstoodItem: {
@@ -533,6 +670,41 @@ export interface components {
             /** Text */
             text: string;
         };
+        /**
+         * QuickReply
+         * @description Kakao quick reply (바로연결): sends a message, or starts a block without understanding.
+         */
+        QuickReply: {
+            /**
+             * Action
+             * @default message
+             * @enum {string}
+             */
+            action: "message" | "block";
+            /** Block Id */
+            block_id?: string | null;
+            /** Label */
+            label: string;
+            /** Message Text */
+            message_text?: string | null;
+        };
+        /**
+         * QuickReplyOut
+         * @description A quick reply as said (not length-checked: a clarify label or a filled-in template may be long).
+         */
+        QuickReplyOut: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "message" | "block";
+            /** Block Id */
+            block_id: string | null;
+            /** Label */
+            label: string;
+            /** Message Text */
+            message_text: string | null;
+        };
         /** RegexEntity */
         RegexEntity: {
             /**
@@ -553,10 +725,17 @@ export interface components {
             /** Respond */
             respond: string;
         };
-        /** Response */
+        /**
+         * Response
+         * @description One speech bubble: text (or random variants) or one rich body, plus quick replies.
+         */
         Response: {
+            basic_card?: components["schemas"]["BasicCard"] | null;
+            carousel?: components["schemas"]["Carousel"] | null;
+            list_card?: components["schemas"]["ListCard"] | null;
             /** Quick Replies */
-            quick_replies?: string[];
+            quick_replies?: (string | components["schemas"]["QuickReply"])[];
+            simple_image?: components["schemas"]["SimpleImage"] | null;
             /** Text */
             text?: string | null;
             /** Variants */
@@ -569,6 +748,8 @@ export interface components {
              * @default false
              */
             exclusive: boolean;
+            /** Group */
+            group?: string | null;
             /**
              * Label
              * @default
@@ -583,6 +764,16 @@ export interface components {
             /** Steps */
             steps: (components["schemas"]["CollectStep"] | components["schemas"]["ActionStep"] | components["schemas"]["RespondStep"] | components["schemas"]["CallStep"] | components["schemas"]["BranchStep"])[];
             trigger?: components["schemas"]["Trigger"] | null;
+        };
+        /**
+         * SessionTimeout
+         * @description A session idle longer than this starts over at its next message (Kakao: 최대 대기 시간).
+         */
+        SessionTimeout: {
+            /** Minutes */
+            minutes: number;
+            /** Notice */
+            notice?: string | null;
         };
         /** Settings */
         Settings: {
@@ -627,12 +818,37 @@ export interface components {
              */
             switch_threshold: number;
         };
+        /** SimpleImage */
+        SimpleImage: {
+            /** Alt Text */
+            alt_text: string;
+            /** Image Url */
+            image_url: string;
+        };
         /** Slot */
         Slot: {
             /** Ask */
-            ask: string;
+            ask?: string | null;
+            /** Default */
+            default?: string | number | null;
             /** Entity */
             entity: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            validation?: components["schemas"]["Validation"] | null;
+        };
+        /**
+         * System
+         * @description System blocks (all optional; a document without them behaves as before).
+         */
+        System: {
+            escape?: components["schemas"]["Escape"] | null;
+            timeout?: components["schemas"]["SessionTimeout"] | null;
+            /** Welcome */
+            welcome?: string | null;
         };
         /** TestTurnOut */
         TestTurnOut: {
@@ -653,6 +869,19 @@ export interface components {
             /** Stack */
             stack: components["schemas"]["FrameOut"][];
         };
+        /** Thumbnail */
+        Thumbnail: {
+            /** Alt Text */
+            alt_text?: string | null;
+            /**
+             * Fixed Ratio
+             * @default false
+             */
+            fixed_ratio: boolean;
+            /** Image Url */
+            image_url: string;
+            link?: components["schemas"]["Link"] | null;
+        };
         /** Trigger */
         Trigger: {
             /** Intent */
@@ -670,6 +899,16 @@ export interface components {
             } | null;
             /** Session */
             session: string;
+        };
+        /**
+         * Validation
+         * @description Check a value with an action before accepting it (Kakao: parameter validation).
+         */
+        Validation: {
+            /** Action */
+            action: string;
+            /** Fail */
+            fail: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -791,6 +1030,38 @@ export interface operations {
                 "application/json": components["schemas"]["MessageIn"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_session_v1_bots__bot__sessions__session__open_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bot: string;
+                session: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -1070,6 +1341,41 @@ export interface operations {
                 "application/json": components["schemas"]["MessageIn"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestTurnOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_open_v1_builder_bots__bot__test__build__sessions__session__open_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+                build: string;
+                session: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

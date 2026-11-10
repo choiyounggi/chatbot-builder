@@ -78,6 +78,22 @@ describe("bot test panel", () => {
     expect(new Set(state.chats.map((c) => c.session)).size).toBe(1);
   });
 
+  it("keeps the newest line in view: the chat scrolls to the bottom after each reply", async () => {
+    botEngine();
+    // jsdom has no layout: give every chat list a fixed content height
+    const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(900);
+    renderAt("/bots/sample/settings");
+    const panel = await open("봇테스트");
+    await userEvent.click(within(panel).getByRole("button", { name: "지금 저장된 초안으로 빌드" }));
+    await within(panel).findByText(/준비됨/);
+    const list = within(panel).getByRole("list", { name: "테스트 대화" });
+    list.scrollTop = 0;
+    await userEvent.type(within(panel).getByLabelText("테스트할 발화"), "안녕{Enter}");
+    await chat(panel).findByText("echo: 안녕");
+    expect(list.scrollTop).toBe(900);
+    height.mockRestore();
+  });
+
   it("switches to the new build after a save and starts a new conversation", async () => {
     const { state } = botEngine();
     renderAt("/bots/sample/settings");
@@ -94,6 +110,9 @@ describe("bot test panel", () => {
     await chat(panel).findByText("echo: 또");
     expect(state.chats[0]?.build).not.toBe(state.chats[1]?.build);
     expect(state.chats[0]?.session).not.toBe(state.chats[1]?.session);
+    // each build opened its own session once; the old session is never opened with the new build
+    expect(state.opens.map((o) => `${o.build}:${o.session}`)).toEqual([
+      `${state.chats[0]?.build}:${state.chats[0]?.session}`, `${state.chats[1]?.build}:${state.chats[1]?.session}`]);
   });
 
   it("offers a rebuild when the build expired", async () => {
@@ -115,6 +134,72 @@ describe("bot test panel", () => {
     await userEvent.click(within(panel).getByRole("button", { name: "지금 저장된 초안으로 빌드" }));
     expect(await within(panel).findByText("테스트 빌드 실패: need at least two intents")).toBeInTheDocument();
     expect(within(panel).getByLabelText("테스트할 발화")).toBeDisabled();
+  });
+
+  it("opens a new session with the bot's welcome messages, once even under StrictMode's double-invoked effects", async () => {
+    const { state } = botEngine({
+      open: (build, session) => ({ body: testTurn(build, session, "어서오세요!", { messages: [{ response: "r", text: "어서오세요!", quick_replies: [] }] }) }),
+    });
+    renderAt("/bots/sample/settings", { strict: true });
+    const panel = await open("봇테스트");
+    await userEvent.click(within(panel).getByRole("button", { name: "지금 저장된 초안으로 빌드" }));
+    expect(await chat(panel).findByText("어서오세요!")).toBeInTheDocument();
+    expect(state.opens).toHaveLength(1);
+  });
+
+  it("shows nothing extra when opening answers messages: [] (an already-open session)", async () => {
+    const { state } = botEngine({ open: (build, session) => ({ body: testTurn(build, session, "", { messages: [] }) }) });
+    renderAt("/bots/sample/settings");
+    const panel = await open("봇테스트");
+    await userEvent.click(within(panel).getByRole("button", { name: "지금 저장된 초안으로 빌드" }));
+    await within(panel).findByText(/준비됨/);
+    expect(chat(panel).queryAllByRole("listitem")).toHaveLength(0);
+    expect(state.opens).toHaveLength(1);
+  });
+
+  it("offers a rebuild when opening fails with 410 (an expired build)", async () => {
+    const { state } = botEngine({ open: () => ({ status: 410, body: { detail: "this test build expired; save the draft again" } }) });
+    renderAt("/bots/sample/settings");
+    const panel = await open("봇테스트");
+    await userEvent.click(within(panel).getByRole("button", { name: "지금 저장된 초안으로 빌드" }));
+    expect(await within(panel).findByRole("heading", { name: "테스트 빌드가 만료됐어요" })).toBeInTheDocument();
+    await userEvent.click(within(within(panel).getByRole("alert")).getByRole("button", { name: "다시 빌드" }));
+    await waitFor(() => expect(state.builds).toBe(2));
+  });
+
+  it('sends block_id when a quick reply with action "block" is pressed', async () => {
+    const { state } = botEngine({
+      chat: (text, build) => ({ body: testTurn(build, "s", `echo: ${text}`, {
+        messages: [{
+          response: "r", text: `echo: ${text}`, quick_replies: [],
+          quick_reply_items: [{ label: "메뉴로", action: "block", message_text: null, block_id: "main_menu" }],
+        }],
+      }) }),
+    });
+    renderAt("/bots/sample/settings");
+    const panel = await open("봇테스트");
+    await userEvent.click(within(panel).getByRole("button", { name: "지금 저장된 초안으로 빌드" }));
+    await within(panel).findByText(/준비됨/);
+    await userEvent.type(within(panel).getByLabelText("테스트할 발화"), "안녕{Enter}");
+    await userEvent.click(await chat(panel).findByRole("button", { name: "메뉴로" }));
+    await waitFor(() => expect(state.chats.at(-1)?.blockId).toBe("main_menu"));
+    expect(state.chats.at(-1)?.text).toBe("메뉴로");
+  });
+
+  it("removes old lines' buttons once a new test build replaces them", async () => {
+    botEngine({
+      chat: (text, build) => ({ body: testTurn(build, "s", `echo: ${text}`, { messages: [{ response: "r", text: `echo: ${text}`, quick_replies: ["계속"] }] }) }),
+    });
+    renderAt("/bots/sample/settings");
+    const panel = await open("봇테스트");
+    await userEvent.click(within(panel).getByRole("button", { name: "지금 저장된 초안으로 빌드" }));
+    await within(panel).findByText(/준비됨/);
+    await userEvent.type(within(panel).getByLabelText("테스트할 발화"), "안녕{Enter}");
+    expect(await chat(panel).findByRole("button", { name: "계속" })).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("봇 이름"), "!");
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+    await within(panel).findByText("새 테스트 빌드로 바꿨어요. 대화를 새로 시작해요.");
+    expect(chat(panel).queryByRole("button", { name: "계속" })).not.toBeInTheDocument();
   });
 });
 
