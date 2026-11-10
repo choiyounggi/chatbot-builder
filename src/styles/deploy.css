@@ -1,0 +1,24 @@
+/* 배포 · 작업이력 — tokens only (src/styles/tokens.css). */
+
+.train-result, .edit-list li {
+  display: grid; gap: var(--space-xs); padding: var(--space-sm); margin: 0;
+  border: var(--rule-width) solid var(--color-rule); border-radius: var(--radius-md);
+}
+.train-result h3, .edit-head { font-size: var(--text-sm); font-weight: 600; color: var(--color-ink); margin: 0; }
+.edit-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-sm); }
+.edit-list ul { margin: var(--space-2xs) 0 0; padding-left: var(--space-lg); font-size: var(--text-sm); }
+
+/* narrow screens: a wide table becomes a stack of labelled rows instead of scrolling sideways */
+@media (max-width: 480px) {
+  .stack-table thead {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  .stack-table, .stack-table tbody, .stack-table tr, .stack-table td { display: block; width: 100%; }
+  .stack-table tr { padding: var(--space-xs) 0; border-bottom: var(--rule-width) solid var(--color-rule-2); }
+  .stack-table td {
+    display: flex; justify-content: space-between; gap: var(--space-sm);
+    padding: var(--space-3xs) 0; border-bottom: 0;
+  }
+  .stack-table td::before { content: attr(data-label); color: var(--color-muted); font-size: var(--text-xs); }
+}
