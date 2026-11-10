@@ -51,8 +51,8 @@ const DONE_RESULT = {
   version: "v3000000000a", number: 3, macro_f1: 0.95, clarify_rate: 0.1,
   per_intent_f1: { greeting: 1.0, weather: 0.6, help: 0.7, bye: 0.95, thanks: 0.99, escape: 0.4 },
   warnings: ["bye 의도의 예문이 7개뿐이에요"],
-  thresholds: { intent_threshold: 0.3, similarity_threshold: 0.39, ambiguity_margin: 0.1, level: "medium" },
-  confusable: [{ a: "weather", b: "weather_tomorrow", score: 0.86 }],
+  thresholds: { intent_threshold: 0.3, similarity_threshold: 0.39, ambiguity_margin: 0.1, level: "normal" },
+  confusable: [{ a: "weather", b: "weather_tomorrow", similarity: 0.86, example_a: "날씨 어때", example_b: "내일 날씨 어때" }],
 };
 
 const jobBody = (status: "queued" | "running" | "done" | "failed", result: unknown = null, error: unknown = null) => ({
@@ -296,9 +296,11 @@ describe("api/deploy.ts의 방어적 파싱", () => {
     expect(result.thresholds?.levelLabel).toBe("직접 설정");
   });
 
-  it("confusable 항목이 {a, b} 모양이 아니면 건너뛰어요", () => {
-    const result = parseVersionJobResult({ confusable: [{ a: "x" }, "oops", { a: "weather", b: "weather2" }] });
-    expect(result.confusable).toEqual([{ label: "weather ↔ weather2", score: null }]);
+  it("confusable 항목이 엔진 모양이 아니면 건너뛰어요", () => {
+    const result = parseVersionJobResult({ confusable: [{ a: "x" }, "oops", { a: "weather", b: "weather2" },
+      { a: "weather", b: "temperature", similarity: 0.95, example_a: "날씨", example_b: "기온" }] });
+    expect(result.confusable).toEqual([{ label: "weather ↔ temperature", score: 0.95 }]);
+    expect(parseVersionJobResult({ thresholds: { level: "normal" } }).thresholds?.levelLabel).toBe("보통");
   });
 
   it("job 오류에 kind가 없으면 unknown으로 다뤄요", () => {

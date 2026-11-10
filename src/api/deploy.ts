@@ -2,6 +2,8 @@
 import { bot, request } from "./client";
 import type { components } from "./schema";
 import type { Job } from "./types";
+import { confusableOf } from "../draft/DraftContext";
+import { LEVELS } from "../model/ml";
 
 type S = components["schemas"];
 
@@ -59,10 +61,8 @@ export interface VersionThresholds {
   intentThreshold: number | null;
   similarityThreshold: number | null;
   ambiguityMargin: number | null;
-  /** 낮음/보통/다소 높음/높음/매우 높음, or "직접 설정" when the level is missing or not one of the five steps
-   * (docs/builder-plan.md §4.4). Assumption: the engine names the five steps "low"/"medium"/"somewhat_high"/
-   * "high"/"very_high" — unconfirmed; everything else (including a bot with no out_of_scope examples) falls
-   * back to "직접 설정". */
+  /** 낮음 … 매우 높음 for the engine's similarity_level (model/ml.ts LEVELS), or "직접 설정" when the
+   * document's own numbers were used (no level, or no out_of_scope examples to compute from). */
   levelLabel: string;
 }
 
@@ -88,9 +88,7 @@ export type VersionJobError =
   | { kind: "no_draft" }
   | { kind: "unknown"; detail: string | null };
 
-const LEVEL_LABELS: Record<string, string> = {
-  low: "낮음", medium: "보통", somewhat_high: "다소 높음", high: "높음", very_high: "매우 높음",
-};
+const LEVEL_LABELS: Record<string, string> = Object.fromEntries(LEVELS.map((l) => [l.id, l.label]));
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
@@ -117,19 +115,9 @@ function asThresholds(value: unknown): VersionThresholds | null {
   };
 }
 
-/** Assumption: a confusable pair is `{a, b, score}` (intent ids + a similarity score). A pair in a
- * shape we don't recognize is skipped rather than guessed at. */
+/** The engine's pairs ({a, b, similarity, example_a, example_b}; malformed ones skipped). */
 function asConfusablePairs(value: unknown): ConfusablePair[] {
-  if (!Array.isArray(value)) return [];
-  const pairs: ConfusablePair[] = [];
-  for (const item of value) {
-    if (item === null || typeof item !== "object") continue;
-    const o = item as Record<string, unknown>;
-    if (typeof o.a === "string" && typeof o.b === "string") {
-      pairs.push({ label: `${o.a} ↔ ${o.b}`, score: typeof o.score === "number" ? o.score : null });
-    }
-  }
-  return pairs;
+  return confusableOf({ confusable: value }).map((p) => ({ label: `${p.a} ↔ ${p.b}`, score: p.similarity }));
 }
 
 export function parseVersionJobResult(result: Record<string, unknown> | null): VersionJobResult {
