@@ -3,4 +3,29 @@
 A builder UI for [chatbot-engine](https://github.com/choiyounggi/chatbot-engine): edit blocks
 (intents + scenarios), entities, skills and a knowledge base, test a draft, deploy and roll back.
 
-> Status: plan approved — [docs/builder-plan.md](docs/builder-plan.md) (Korean). No app code yet.
+> Status: B1 — app shell (menus, entity / bot-test panels, light and dark themes), the bot list and
+> bot settings (rename, saved with the draft's ETag). The other menus say which step builds them.
+> Plan: [docs/builder-plan.md](docs/builder-plan.md) (Korean).
+
+## Run it
+
+Needs Node 24+ and a running engine.
+
+```sh
+# 1. the engine (in the chatbot-engine checkout)
+make serve                               # 127.0.0.1:8000; CHATCORE_ADMIN_TOKEN=... to require a token
+
+# 2. the builder (here)
+npm ci
+npm run dev                              # http://127.0.0.1:5173, proxies /v1 to the engine
+```
+
+`CHATCORE_ENGINE_URL=http://host:port npm run dev` points the proxy at another engine.
+If the engine runs with `CHATCORE_ADMIN_TOKEN`, the builder asks for it once per browser tab.
+
+## Check
+
+```sh
+npm run check   # tsc + eslint + vitest (coverage gate) — the same as CI
+npm run build   # production bundle in dist/
+```
