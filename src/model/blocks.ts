@@ -24,6 +24,8 @@ export interface Param {
   ask: Reply | null; // the re-ask question (optional parameters may have none)
   required: boolean; // false: taken from the user's words, never asked
   default: string | number | null; // optional parameters: the value when the user gave none
+  /** A skill that checks the value (engine: slot.validation); `fail` is said when it refuses. */
+  validation: { action: string; fail: Reply } | null;
 }
 
 export interface Block {
@@ -72,6 +74,9 @@ export function readBlock(doc: BotDoc, id: string): Block {
     ask: slot.ask ? replyOf(doc, slot.ask, claim(slot.ask, `파라미터 ${name}의 질문`)) : null,
     required: slot.required !== false,
     default: slot.default ?? null,
+    validation: slot.validation
+      ? { action: slot.validation.action, fail: replyOf(doc, slot.validation.fail, claim(slot.validation.fail, `파라미터 ${name}의 검증 실패`)) }
+      : null,
   }));
   let n = 0;
   const replies = scenario.steps.flatMap((step) => {
@@ -120,6 +125,8 @@ function slotDoc(before: SlotDoc | undefined, param: Param): SlotDoc {
   if (!param.required || before?.required !== undefined) slot.required = param.required;
   if (param.default !== null && param.default !== "" && !param.required) slot.default = param.default;
   else if (slot.default !== null || param.required === false) delete slot.default;
+  if (param.validation) slot.validation = { action: param.validation.action, fail: param.validation.fail.response };
+  else if (slot.validation !== null) delete slot.validation;
   return slot;
 }
 
@@ -139,7 +146,10 @@ export function writeBlock(doc: BotDoc, block: Block): BotDoc {
     next.intents = { ...next.intents, [block.intent]: { ...next.intents?.[block.intent], examples: [...block.examples] } };
   }
   next.scenarios[block.id] = scenario;
-  for (const param of block.params) if (param.ask) writeResponse(next, param.ask);
+  for (const param of block.params) {
+    if (param.ask) writeResponse(next, param.ask);
+    if (param.validation) writeResponse(next, param.validation.fail);
+  }
   for (const reply of block.replies) writeResponse(next, reply);
   // a removed reply or parameter leaves its response behind: drop it unless something else uses it
   if (before) {
@@ -174,7 +184,7 @@ export function addParam(doc: BotDoc, block: Block, entity: string): Block {
   const lastCollect = block.steps.reduce((at, step, i) => ("collect" in step ? i : at), -1);
   const steps = [...block.steps];
   steps.splice(lastCollect + 1, 0, { collect: name });
-  return { ...block, params: [...block.params, { name, entity, ask: textReply(ask), required: true, default: null }], steps };
+  return { ...block, params: [...block.params, { name, entity, ask: textReply(ask), required: true, default: null, validation: null }], steps };
 }
 
 /** Where this block's texts, skill arguments or branches read the parameter ({{ slots.name }}). */
@@ -183,7 +193,9 @@ export function paramUses(doc: BotDoc, block: Block, name: string): string[] {
   const uses: string[] = [];
   const onError = doc.scenarios[block.id]?.on_error;
   const responses = new Set([...block.replies.map((r) => r.response),
-    ...block.params.filter((p) => p.name !== name && p.ask).map((p) => (p.ask as Reply).response), ...(onError ? [onError] : [])]);
+    ...block.params.filter((p) => p.name !== name && p.ask).map((p) => (p.ask as Reply).response),
+    ...block.params.filter((p) => p.name !== name && p.validation).map((p) => (p.validation as { fail: Reply }).fail.response),
+    ...(onError ? [onError] : [])]);
   for (const response of responses) {
     if (responseStrings(doc.responses[response]).some((t) => pattern.test(t))) uses.push(`응답 ${response}`);
   }
@@ -329,4 +341,52 @@ function sortKeys(value: unknown): unknown {
     return Object.fromEntries(Object.keys(value).sort().map((k) => [k, sortKeys((value as Record<string, unknown>)[k])]));
   }
   return value;
+}
+
+// ---------------------------------------------------------------- skills a block calls (action steps)
+
+export interface SkillStep {
+  index: number; // position in block.steps
+  action: string;
+  args: Record<string, string>;
+}
+
+export function skillSteps(block: Block): SkillStep[] {
+  return block.steps.flatMap((step, index) => ("action" in step ? [{ index, action: step.action, args: { ...step.args } }] : []));
+}
+
+/** Call a skill after the parameters are collected and before the first reply (the order a Kakao block runs in). */
+export function addSkillStep(block: Block, action: string): Block {
+  const firstRespond = block.steps.findIndex((step) => "respond" in step);
+  const lastCollect = block.steps.reduce((at, step, i) => ("collect" in step ? i : at), -1);
+  const at = firstRespond === -1 ? block.steps.length : Math.max(firstRespond, lastCollect + 1);
+  const steps = [...block.steps];
+  steps.splice(at, 0, { action, args: {} });
+  return { ...block, steps };
+}
+
+export function updateSkillStep(block: Block, index: number, action: string, args: Record<string, string>): Block {
+  const step = block.steps[index];
+  if (!step || !("action" in step)) return block;
+  const steps = [...block.steps];
+  steps[index] = Object.keys(args).length > 0 || step.args !== undefined ? { ...step, action, args } : { ...step, action };
+  return { ...block, steps };
+}
+
+export function removeSkillStep(block: Block, index: number): Block {
+  const step = block.steps[index];
+  if (!step || !("action" in step)) return block;
+  return { ...block, steps: block.steps.filter((_, i) => i !== index) };
+}
+
+/** Where this block reads an action's results ({{ results.<action>.field }} in its responses, or a branch):
+ * removing or switching that action would leave them unknown. */
+export function resultUses(doc: BotDoc, block: Block, action: string): string[] {
+  const pattern = new RegExp(`\\{\\{\\s*results\\.${action}\\.`);
+  const onError = doc.scenarios[block.id]?.on_error;
+  const responses = new Set([...block.replies.map((r) => r.response), ...block.params.flatMap((p) => [
+    ...(p.ask ? [p.ask.response] : []), ...(p.validation ? [p.validation.fail.response] : [])]), ...(onError ? [onError] : [])]);
+  const uses = [...responses].filter((r) => responseStrings(doc.responses[r]).some((t) => pattern.test(t))).map((r) => `응답 ${r}`);
+  if (block.steps.some((step) => "branch" in step && step.branch.on.startsWith(`results.${action}.`))) uses.push("분기");
+  return uses;
 }

@@ -1,0 +1,24 @@
+/* 스킬 — tokens only (src/styles/tokens.css). */
+
+.skill-row {
+  display: grid; gap: var(--space-3xs); width: 100%; box-sizing: border-box; text-align: left;
+  padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md);
+  border: var(--rule-width) solid transparent; background: transparent; color: var(--color-ink); font: inherit; cursor: pointer;
+}
+@media (hover: hover) { .skill-row:hover { background: var(--color-paper-2); } }
+.skill-row[aria-current="true"] { border-color: var(--color-accent); background: var(--color-accent-wash); }
+
+.header-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-xs); }
+.header-row { display: grid; grid-template-columns: 8rem minmax(0, 1fr) 9rem auto; gap: var(--space-xs); align-items: center; }
+.header-row .mono { overflow-wrap: anywhere; }
+
+.test-result { display: grid; gap: var(--space-xs); }
+.test-result pre {
+  margin: 0; padding: var(--space-sm); border: var(--rule-width) solid var(--color-rule); border-radius: var(--radius-md);
+  background: var(--color-paper-2); font: var(--text-xs) / 1.5 var(--font-mono); overflow-x: auto;
+}
+.help[data-tone="error"] { color: var(--color-error); }
+
+@media (max-width: 760px) {
+  .header-row { grid-template-columns: 1fr; }
+}

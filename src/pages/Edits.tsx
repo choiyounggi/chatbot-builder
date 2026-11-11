@@ -9,7 +9,7 @@ const PAGE_SIZE = 50;
 const MAX_LIMIT = 500;
 
 const AREA_NOUN: Record<ChangeOut["area"], string> = {
-  bot: "봇", settings: "설정", system: "시스템 블록", block: "블록", intent: "의도", entity: "엔티티", response: "응답",
+  bot: "봇", settings: "설정", system: "시스템 블록", block: "블록", intent: "의도", entity: "엔티티", response: "응답", skill: "스킬",
 };
 const ACTION_VERB: Record<ChangeOut["action"], string> = { added: "추가", removed: "삭제", changed: "수정" };
 

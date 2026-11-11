@@ -11,10 +11,11 @@ import { Deploy } from "./pages/Deploy";
 import { Edits } from "./pages/Edits";
 import { MachineLearning } from "./pages/MachineLearning";
 import { Scenarios } from "./pages/Scenarios";
+import { Skills } from "./pages/Skills";
 import { Training } from "./pages/Training";
 
 /** Sections with their own screen; the others show which step builds them. */
-const BUILT = new Set<string>(["scenarios", "settings", "training", "ml", "deploy", "history"]);
+const BUILT = new Set<string>(["scenarios", "settings", "training", "ml", "deploy", "history", "skills"]);
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -40,6 +41,7 @@ export function AppRoutes() {
         <Route path="ml" element={<MachineLearning />} />
         <Route path="deploy" element={<Deploy />} />
         <Route path="history" element={<Edits />} />
+        <Route path="skills" element={<Skills />} />
         {SECTIONS.filter((s) => !BUILT.has(s.path)).map((s) => (
           <Route key={s.path} path={s.path} element={<NotYet section={s.path} />} />
         ))}

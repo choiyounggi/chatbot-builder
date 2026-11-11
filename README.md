@@ -3,13 +3,14 @@
 A builder UI for [chatbot-engine](https://github.com/choiyounggi/chatbot-engine): edit blocks
 (intents + scenarios), entities, skills and a knowledge base, test a draft, deploy and roll back.
 
-> Status: B4 — bot list, scenario/block editor (examples, parameters with optional/default, block
+> Status: B5 — bot list, scenario/block editor (examples, parameters with optional/default, block
 > groups, text / image / card / list / carousel replies, buttons and quick replies that move to a block),
 > 기본 시나리오 (welcome, fallback, escape, scenario settings), entity panel, bot test panel (chat with a
 > test build of the saved draft: welcome messages, rich messages, block buttons, what the engine decided),
 > 학습 (a queue of what users said, add to a block / ignore, history), 배포 (train, deploy with notes, history,
 > roll back), 작업이력 (what each save changed), 머신러닝 (similarity level, exact-only blocks, keyword match,
-> confusable blocks), one shared draft saved with its ETag. The other menus say which step builds them.
+> confusable blocks), 스킬 (HTTP skills: edit, test run, error log, secrets; call one from a block or
+> check a parameter with it), one shared draft saved with its ETag. The other menus say which step builds them.
 > Plan: [docs/builder-plan.md](docs/builder-plan.md) (Korean).
 
 ## Run it
