@@ -69,6 +69,7 @@ function engine(options: {
   deployReply?: Reply;
   rollbackReply?: Reply;
   draft?: Handler;
+  kb?: Reply;
 } = {}) {
   const calls: string[] = [];
   const routes: Record<string, Handler> = {
@@ -84,6 +85,7 @@ function engine(options: {
     "GET /v1/builder/jobs/job1": () => options.jobReply ?? { body: jobBody("done", DONE_RESULT) },
     "POST /v1/builder/bots/sample/deploy": () => options.deployReply ?? { body: { bot: "sample", live: "v3000000000a" } },
     "POST /v1/builder/bots/sample/rollback": () => options.rollbackReply ?? { body: { bot: "sample", live: "v1000000000a" } },
+    "GET /v1/builder/bots/sample/knowledge/versions": () => options.kb ?? { body: { bot: "sample", live: null, versions: [] } },
   };
   return { fetchMock: fakeEngine(routes), calls };
 }
@@ -209,10 +211,10 @@ describe("배포", () => {
     await userEvent.type(screen.getByLabelText("메모 (선택)"), "주말 응답 수정");
     expect(screen.getByText("8/100자")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "배포" }));
-    expect(await screen.findByText("v2 배포됨")).toBeInTheDocument();
+    expect(await screen.findByText("v2 배포됨 · 지식베이스 없음")).toBeInTheDocument();
     const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/deploy"));
     const body = JSON.parse(String((call?.[1] as RequestInit).body));
-    expect(body).toEqual({ version: "v2000000000a", note: "주말 응답 수정" });
+    expect(body).toEqual({ version: "v2000000000a", note: "주말 응답 수정", knowledge_version: null }); // none built
   });
 
   it("404/409면 엔진이 보낸 이유를 그대로 보여줘요", async () => {
@@ -239,7 +241,7 @@ describe("이전 버전으로 되돌리기", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "이전 버전으로 되돌리기" })).toBeEnabled());
     await userEvent.click(screen.getByRole("button", { name: "이전 버전으로 되돌리기" }));
     expect(window.confirm).toHaveBeenCalledOnce();
-    expect(await screen.findByText("이전 버전으로 되돌렸어요")).toBeInTheDocument();
+    expect(await screen.findByText("이전 버전으로 되돌렸어요 · 지식베이스 없음")).toBeInTheDocument();
   });
 
   it("확인을 취소하면 요청을 보내지 않아요", async () => {
@@ -411,7 +413,111 @@ describe("review fixes", () => {
     await userEvent.click(await screen.findByRole("button", { name: "배포" }));
     await screen.findByText(/v\d 배포됨/);
     await userEvent.click(screen.getByRole("button", { name: "이전 버전으로 되돌리기" }));
-    await screen.findByText("이전 버전으로 되돌렸어요");
+    await screen.findByText(/이전 버전으로 되돌렸어요/);
     expect(screen.queryByText(/v\d 배포됨/)).toBeNull();
   });
 });
+
+
+describe("지식베이스와 함께 배포", () => {
+  const KB = {
+    bot: "sample", live: "k1000000000a",
+    versions: [
+      { version: "k2000000000a", number: 2, created_at: "2026-11-11T01:00:00+00:00", faq: 3, chunks: 7, live: false },
+      { version: "k1000000000a", number: 1, created_at: "2026-11-10T01:00:00+00:00", faq: 2, chunks: 5, live: true },
+    ],
+  };
+  const deployBody = (fetchMock: ReturnType<typeof engine>["fetchMock"]) =>
+    JSON.parse(String((fetchMock.mock.calls.find(([url]) => String(url).endsWith("/deploy"))?.[1] as RequestInit).body)) as unknown;
+
+  it("기본은 라이브 색인이고, 다른 것을 고르면 바뀐다고 알려주고, 배포 결과에 지식베이스를 적어요", async () => {
+    const { fetchMock } = engine({ kb: { body: KB }, deployReply: { body: { bot: "sample", live: "v3000000000a", knowledge_version: "k2000000000a" } } });
+    renderDeploy();
+    await waitFor(() => expect(screen.getByLabelText("지식베이스")).toHaveValue("k1000000000a"));
+    expect(screen.getByRole("option", { name: "v1 · FAQ 2개 · 조각 5개 · 라이브" })).toBeInTheDocument();
+    expect(screen.getByText("지금 라이브: v1")).toBeInTheDocument();
+    expect(screen.queryByText(/배포하면 지식베이스가/)).toBeNull();
+    await userEvent.selectOptions(screen.getByLabelText("지식베이스"), "k2000000000a");
+    expect(screen.getByText("배포하면 지식베이스가 v1에서 v2(으)로 바뀌어요.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "배포" }));
+    expect(await screen.findByText("v3 배포됨 · 지식베이스 v2")).toBeInTheDocument();
+    expect(deployBody(fetchMock)).toEqual({ version: "v3000000000a", note: "", knowledge_version: "k2000000000a" });
+  });
+
+  it("'없음'을 고르면 지식베이스 없이 배포해요", async () => {
+    const { fetchMock } = engine({ kb: { body: KB } });
+    renderDeploy();
+    await waitFor(() => expect(screen.getByLabelText("지식베이스")).toHaveValue("k1000000000a"));
+    await userEvent.selectOptions(screen.getByLabelText("지식베이스"), "");
+    expect(screen.getByText("배포하면 지식베이스가 v1에서 없음(으)로 바뀌어요.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "배포" }));
+    await screen.findByText(/배포됨/);
+    expect(deployBody(fetchMock)).toEqual({ version: "v3000000000a", note: "", knowledge_version: null });
+  });
+
+  it("목록을 못 불러오면 지식베이스를 보내지 않아 지금 것이 유지돼요", async () => {
+    const { fetchMock } = engine({ kb: { status: 500, body: { detail: "boom" } } });
+    renderDeploy();
+    expect(await screen.findByText("지식베이스 목록을 불러오지 못했어요. 지금 배포된 지식베이스가 그대로 유지돼요.")).toBeInTheDocument();
+    expect(screen.getByLabelText("지식베이스")).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "배포" }));
+    expect(await screen.findByText("v3 배포됨 · 지식베이스 그대로")).toBeInTheDocument();
+    expect(deployBody(fetchMock)).toEqual({ version: "v3000000000a", note: "" });
+  });
+
+  it("히스토리에 지식베이스를 보여주고, 지식베이스만 달라도 되돌릴 수 있어요", async () => {
+    const history = [
+      { version: "v2000000000a", number: 2, note: "", deployed_at: "2026-11-11T02:00:00+00:00", knowledge_version: "k1000000000a" },
+      { version: "v2000000000a", number: 2, note: "", deployed_at: "2026-11-10T02:00:00+00:00", knowledge_version: null },
+    ];
+    engine({ kb: { body: KB }, versions: { body: { ...SAMPLE_VERSIONS, history } } });
+    renderDeploy();
+    const table = (await screen.findByText("배포 히스토리")).parentElement as HTMLElement;
+    await waitFor(() => expect(within(table).getAllByText("v1").length).toBe(1));
+    expect(within(table).getByText("없음")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "이전 버전으로 되돌리기" })).toBeEnabled();
+  });
+
+  it("같은 쌍만 반복해서 배포했으면 되돌릴 수 없어요", async () => {
+    const same = { version: "v2000000000a", number: 2, note: "", deployed_at: "2026-11-11T02:00:00+00:00", knowledge_version: "k1000000000a" };
+    engine({ kb: { body: KB }, versions: { body: { ...SAMPLE_VERSIONS, history: [same, { ...same, deployed_at: "2026-11-10T02:00:00+00:00" }] } } });
+    renderDeploy();
+    await waitFor(() => expect(screen.getByLabelText("지식베이스")).toHaveValue("k1000000000a"));
+    expect(screen.getByRole("button", { name: "이전 버전으로 되돌리기" })).toBeDisabled();
+  });
+});
+
+describe("지식베이스와 함께 배포 (리뷰 후)", () => {
+  it("목록을 불러오는 동안은 '불러오는 중'이라고 보여줘요", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const { fetchMock } = engine();
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).endsWith("/knowledge/versions") ? gate.then(() => new Response("{}", { status: 500 })) : fetchMock(input, init));
+    renderDeploy();
+    expect(await screen.findByRole("option", { name: "불러오는 중…" })).toBeInTheDocument();
+    expect(screen.getByLabelText("지식베이스")).toBeDisabled();
+    release();
+  });
+
+  it("쓸 수 없는 지식베이스로 배포가 거절되면 이유를 한국어로 보여줘요", async () => {
+    engine({ deployReply: { status: 409, body: { detail: { detail: "the knowledge base cannot be used here", errors: ["stored knowledge base x hashes to y"] } } } });
+    renderDeploy();
+    await waitFor(() => expect(screen.getByLabelText("배포할 버전")).toHaveValue("v3000000000a"));
+    await userEvent.click(screen.getByRole("button", { name: "배포" }));
+    expect(await screen.findByText("그 지식베이스는 지금 쓸 수 없어요. 색인을 다시 만들어 주세요. (stored knowledge base x hashes to y)")).toBeInTheDocument();
+  });
+
+  it("히스토리의 라이브 표시는 맨 위 배포에만 붙어요", async () => {
+    const history = [
+      { version: "v2000000000a", number: 2, note: "", deployed_at: "2026-11-11T02:00:00+00:00", knowledge_version: "k1000000000a" },
+      { version: "v2000000000a", number: 2, note: "", deployed_at: "2026-11-10T02:00:00+00:00", knowledge_version: null },
+    ];
+    engine({ versions: { body: { ...SAMPLE_VERSIONS, history } } });
+    renderDeploy();
+    const section = (await screen.findByText("배포 히스토리")).parentElement as HTMLElement;
+    await waitFor(() => expect(within(section).getAllByRole("row")).toHaveLength(3));
+    expect(within(section).getAllByText("라이브")).toHaveLength(1);
+  });
+});
+

@@ -26,12 +26,14 @@ export async function startVersionJob(id: string): Promise<Job> {
   return (await res.json()) as Job;
 }
 
-/** ApiError 404 unknown version, 409 not trained / cannot run here. */
-export async function deployVersion(id: string, version: string, note: string): Promise<LiveOut> {
+/** ApiError 404 unknown version, 409 not trained / cannot run here. `knowledgeVersion`: the knowledge
+ * base deployed with it (null: none; undefined: keep the one that is live now). */
+export async function deployVersion(id: string, version: string, note: string,
+                                    knowledgeVersion?: string | null): Promise<LiveOut> {
   const res = await request(`${bot(id)}/deploy`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ version, note }),
+    body: JSON.stringify(knowledgeVersion === undefined ? { version, note } : { version, note, knowledge_version: knowledgeVersion }),
   });
   return (await res.json()) as LiveOut;
 }

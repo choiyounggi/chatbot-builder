@@ -106,7 +106,7 @@ describe("review fixes", () => {
     const e = await editor();
     await userEvent.click(within(e).getByRole("button", { name: "스킬 추가" }));
     const options = [...(within(e).getByLabelText("스킬 1", { exact: true }) as HTMLSelectElement).options].map((o) => o.textContent);
-    expect(options).toEqual(["주문 조회", "check_city", "get_weather (내장 액션)", "get_temperature (내장 액션)", "now (내장 액션)"]);
+    expect(options).toEqual(["주문 조회", "check_city", "get_weather (내장 액션)", "get_temperature (내장 액션)", "now (내장 액션)", "knowledge (내장 액션)"]);
   });
 
   it("lets a bot without skills add a built-in action", async () => {
