@@ -39,6 +39,7 @@ describe("작업이력", () => {
               { area: "intent", action: "changed", id: "weather", label: "", examples_added: 2, examples_removed: 1 },
               { area: "system", action: "added", id: "welcome", label: "", examples_added: null, examples_removed: null },
               { area: "bot", action: "changed", id: "label", label: "이름", examples_added: null, examples_removed: null },
+              { area: "skill", action: "added", id: "get_order", label: "주문 조회", examples_added: null, examples_removed: null },
             ],
           }],
         },
@@ -49,6 +50,7 @@ describe("작업이력", () => {
     expect(screen.getByText("블록 ‘날씨 안내’(check_weather) 수정")).toBeInTheDocument();
     expect(screen.getByText("의도 weather 수정 · 예문 +2 −1")).toBeInTheDocument();
     expect(screen.getByText("시스템 블록 추가")).toBeInTheDocument();
+    expect(screen.getByText(/^스킬 .*주문 조회.* 추가$/)).toBeInTheDocument();
     expect(screen.getByText("봇 이름 수정")).toBeInTheDocument();
   });
 

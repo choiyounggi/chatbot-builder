@@ -191,6 +191,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/builder/bots/{bot}/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Secrets
+         * @description The bot's secret names (for {{ secret.NAME }} in skill headers). Values are write-only.
+         */
+        get: operations["secrets_v1_builder_bots__bot__secrets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/secrets/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Secret */
+        put: operations["set_secret_v1_builder_bots__bot__secrets__name__put"];
+        post?: never;
+        /** Delete Secret */
+        delete: operations["delete_secret_v1_builder_bots__bot__secrets__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/skills/errors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Skill Errors
+         * @description 스킬 오류 내역: the newest failed skill calls (test runs included), at most 100.
+         */
+        get: operations["skill_errors_v1_builder_bots__bot__skills_errors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/skills/{skill}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Skill
+         * @description Call a skill of the saved draft once (its test_url when set) and show what came back.
+         */
+        post: operations["test_skill_v1_builder_bots__bot__skills__skill__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/builder/bots/{bot}/test-builds": {
         parameters: {
             query?: never;
@@ -491,6 +569,10 @@ export interface components {
              *     }
              */
             settings: components["schemas"]["Settings"];
+            /** Skills */
+            skills?: {
+                [key: string]: components["schemas"]["Skill"];
+            };
             /** @default {} */
             system: components["schemas"]["System"];
         };
@@ -579,7 +661,7 @@ export interface components {
              * Area
              * @enum {string}
              */
-            area: "bot" | "settings" | "system" | "block" | "intent" | "entity" | "response";
+            area: "bot" | "settings" | "system" | "block" | "intent" | "entity" | "response" | "skill";
             /** Examples Added */
             examples_added?: number | null;
             /** Examples Removed */
@@ -964,6 +1046,25 @@ export interface components {
             steps: (components["schemas"]["CollectStep"] | components["schemas"]["ActionStep"] | components["schemas"]["RespondStep"] | components["schemas"]["CallStep"] | components["schemas"]["BranchStep"])[];
             trigger?: components["schemas"]["Trigger"] | null;
         };
+        /** SecretIn */
+        SecretIn: {
+            /** Value */
+            value: string;
+        };
+        /** SecretOut */
+        SecretOut: {
+            /** Name */
+            name: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** SecretsOut */
+        SecretsOut: {
+            /** Bot */
+            bot: string;
+            /** Items */
+            items: components["schemas"]["SecretOut"][];
+        };
         /** SentencesIn */
         SentencesIn: {
             /** Texts */
@@ -1035,6 +1136,83 @@ export interface components {
             alt_text: string;
             /** Image Url */
             image_url: string;
+        };
+        /**
+         * Skill
+         * @description An HTTP skill (builder plan E10): an action the bot's scenarios call by its id.
+         */
+        Skill: {
+            /** Headers */
+            headers?: {
+                [key: string]: string;
+            };
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Test Url */
+            test_url?: string | null;
+            /**
+             * Timeout Ms
+             * @default 3000
+             */
+            timeout_ms: number;
+            /** Url */
+            url: string;
+        };
+        /** SkillErrorOut */
+        SkillErrorOut: {
+            /** At */
+            at: string;
+            /** Detail */
+            detail: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "blocked" | "network" | "timeout" | "http_status" | "invalid_response" | "too_large" | "secret_missing";
+            /** Ms */
+            ms: number;
+            /** Skill */
+            skill: string;
+            /** Status */
+            status: number | null;
+            /** Test */
+            test: boolean;
+        };
+        /** SkillErrorsOut */
+        SkillErrorsOut: {
+            /** Bot */
+            bot: string;
+            /** Items */
+            items: components["schemas"]["SkillErrorOut"][];
+        };
+        /** SkillTestIn */
+        SkillTestIn: {
+            /** Params */
+            params?: {
+                [key: string]: string;
+            };
+            /**
+             * Utterance
+             * @default
+             */
+            utterance: string;
+        };
+        /** SkillTestOut */
+        SkillTestOut: {
+            error: components["schemas"]["SkillErrorOut"] | null;
+            /** Ms */
+            ms: number;
+            /** Ok */
+            ok: boolean;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            } | null;
+            /** Status */
+            status: number | null;
         };
         /** Slot */
         Slot: {
@@ -1562,6 +1740,180 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LiveOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    secrets_v1_builder_bots__bot__secrets_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_secret_v1_builder_bots__bot__secrets__name__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_secret_v1_builder_bots__bot__secrets__name__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    skill_errors_v1_builder_bots__bot__skills_errors_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillErrorsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_skill_v1_builder_bots__bot__skills__skill__test_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+                skill: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillTestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillTestOut"];
                 };
             };
             /** @description Validation Error */

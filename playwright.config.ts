@@ -18,7 +18,7 @@ export default defineConfig({
   webServer: [
     {
       // a fresh in-memory repository and a scratch artifacts directory on every run
-      command: `uv run --locked --directory ${ENGINE_DIR} python -m chatcore.api --bot bots/sample --embedder hashing --min-f1 0 `
+      command: `uv run --locked --directory ${ENGINE_DIR} python -m chatcore.api --bot bots/sample --embedder hashing --min-f1 0 --skill-allow-private `
         + `--artifacts ${ARTIFACTS} --port ${ENGINE_PORT}`,
       url: `http://127.0.0.1:${ENGINE_PORT}/healthz`,
       timeout: 180_000,

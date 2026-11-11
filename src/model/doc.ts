@@ -117,9 +117,21 @@ export interface SystemDoc {
   [key: string]: unknown;
 }
 
+/** An HTTP skill (engine E10): an action the bot calls by its id. Headers may hold {{ secret.NAME }}. */
+export interface SkillDoc {
+  label?: string;
+  url: string;
+  test_url?: string | null;
+  headers?: Record<string, string>;
+  timeout_ms?: number; // 100-10000, default 3000
+}
+
+export const SKILL_TIMEOUT = { min: 100, max: 10_000, default: 3000 } as const;
+
 export interface BotDoc {
   id: string;
   label?: string;
+  skills?: Record<string, SkillDoc>;
   settings?: { max_attempts?: number; [key: string]: unknown };
   system?: SystemDoc;
   intents?: Record<string, IntentDoc>;
