@@ -22,7 +22,7 @@ describe("bot shell", () => {
     expect(await screen.findByRole("heading", { name: "설정" })).toBeInTheDocument();
     const rail = screen.getByRole("navigation", { name: "봇 메뉴" });
     const names = Array.from(rail.querySelectorAll("a")).map((a) => a.textContent);
-    expect(names).toEqual(["시나리오", "스킬", "학습", "분석", "배포", "작업이력", "머신러닝", "설정"]);
+    expect(names).toEqual(["시나리오", "스킬", "지식베이스", "학습", "분석", "배포", "작업이력", "머신러닝", "설정"]);
     expect(screen.getByRole("link", { name: "설정" })).toHaveAttribute("aria-current", "page");
     expect(await screen.findByText("샘플 봇", { selector: "strong" })).toBeInTheDocument();
   });

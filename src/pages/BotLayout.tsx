@@ -12,6 +12,7 @@ import { SaveBar } from "../draft/SaveBar";
 export const SECTIONS = [
   { path: "scenarios", label: "시나리오" },
   { path: "skills", label: "스킬" },
+  { path: "knowledge", label: "지식베이스" },
   { path: "training", label: "학습" },
   { path: "analytics", label: "분석" },
   { path: "deploy", label: "배포" },
