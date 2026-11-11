@@ -288,3 +288,13 @@ textarea.input { height: auto; min-height: 4rem; padding: var(--space-xs) var(--
   .queue-actions { grid-template-columns: minmax(0, 1fr) auto; }
   .queue-actions select { grid-column: 1 / -1; }
 }
+
+/* B5: skills a block calls, parameter validation */
+.skill-step { display: grid; gap: var(--space-xs); padding: var(--space-sm); border: var(--rule-width) solid var(--color-rule); border-radius: var(--radius-md); min-width: 0; }
+.skill-step > .btn { justify-self: start; }
+.skill-args { display: grid; gap: var(--space-2xs); }
+.skill-args > .btn { justify-self: start; }
+.skill-arg { display: grid; grid-template-columns: minmax(0, 10rem) minmax(0, 1fr) auto; gap: var(--space-xs); align-items: center; }
+.param-check { grid-column: 1 / -1; display: grid; gap: var(--space-2xs); max-width: 28rem; }
+.param-check label { font-size: var(--text-sm); font-weight: 600; color: var(--color-ink); }
+@media (max-width: 760px) { .skill-arg { grid-template-columns: minmax(0, 1fr) auto; } .skill-arg input:first-of-type { grid-column: 1 / -1; } }

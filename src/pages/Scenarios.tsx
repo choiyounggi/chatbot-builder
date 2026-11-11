@@ -5,7 +5,8 @@ import { type BlockOption, ReplyEditor } from "../components/ReplyEditor";
 import { useDraft } from "../draft/DraftContext";
 import {
   addParam, addReply, type Block, callersOf, createBlock, deleteBlock, kindOf, listBlocks, looseIntents, newBlockId,
-  paramUses, readBlock, removeParam, removeReply, systemScenarios, textReply, writeBlock,
+  addSkillStep, paramUses, readBlock, removeParam, removeReply, removeSkillStep, skillSteps, systemScenarios, textReply,
+  updateSkillStep, writeBlock,
 } from "../model/blocks";
 import { type BotDoc, KAKAO, type Step, SYSTEM_ENTITIES } from "../model/doc";
 import { isSystemPage, SYSTEM_PAGES, SystemEditor } from "./SystemBlocks";
@@ -156,6 +157,8 @@ function BlockEditor({ id, blocks, embedded = false }: { id: string; blocks: Blo
   }, [state]);
 
   const groups = [...new Set(Object.values(doc.scenarios).map((s) => s.group).filter((g): g is string => !!g))];
+  const skillIds = Object.keys(doc.skills ?? {});
+  const skillLabel = (sid: string) => (doc.skills?.[sid] ? doc.skills[sid].label || sid : `${sid} (내장 액션)`);
   const remove = () => {
     const callers = callersOf(doc, id);
     if (callers.length > 0) {
@@ -233,10 +236,54 @@ function BlockEditor({ id, blocks, embedded = false }: { id: string; blocks: Blo
             )}
             <button type="button" className="btn btn--quiet" onClick={() => dropParam(p.name)}
                     aria-label={`파라미터 ${p.name} 삭제`}>삭제</button>
+            {(skillIds.length > 0 || p.validation) && (
+              <div className="param-check">
+                <label htmlFor={`check-${p.name}`}>{p.name} 값 검증</label>
+                <select id={`check-${p.name}`} className="input" value={p.validation?.action ?? ""}
+                        onChange={(e) => change((b) => ({ ...b, params: b.params.map((x) => x.name !== p.name ? x : {
+                          ...x, validation: e.target.value ? { action: e.target.value,
+                            fail: x.validation?.fail ?? textReply(newFail(d(), b, x.name), "올바른 값이 아니에요. 다시 알려 주세요.") } : null }) }))}>
+                  <option value="">검증 안 함</option>
+                  {withCurrent(skillIds, p.validation?.action).map((sid) => <option key={sid} value={sid}>{skillLabel(sid)}</option>)}
+                </select>
+                {p.validation && !p.validation.fail.sharedWith && (
+                  <>
+                    <label htmlFor={`fail-${p.name}`}>{p.name} 검증 실패 안내</label>
+                    <input id={`fail-${p.name}`} className="input" value={p.validation.fail.texts[0] ?? ""}
+                           onChange={(e) => change((b) => ({ ...b, params: b.params.map((x) => x.name === p.name && x.validation
+                             ? { ...x, validation: { ...x.validation, fail: { ...x.validation.fail, texts: [e.target.value] } } } : x) }))} />
+                  </>
+                )}
+                {p.validation && <p className="help">스킬이 {"{"}"valid": true{"}"}를 돌려주면 받고, 아니면 안내를 말한 뒤 다시 물어요.</p>}
+              </div>
+            )}
           </div>
         ))}
         <button type="button" className="btn" disabled={entities.length === 0}
                 onClick={() => change((b, d) => addParam(d, b, entities[0] ?? "sys.number"))}>파라미터 추가</button>
+      </fieldset>
+
+      <fieldset className="group">
+        <legend>스킬</legend>
+        <p className="status">파라미터를 받은 뒤, 응답하기 전에 부르는 스킬이에요. 응답 문구에서 {"{{ results.스킬.필드 }}"}로 결과를 써요.</p>
+        {skillSteps(block).map((step, n) => (
+          <div className="skill-step" key={step.index}>
+            <div className="field">
+              <label htmlFor={`skill-${n}`}>스킬 {n + 1}</label>
+              <select id={`skill-${n}`} className="input" value={step.action}
+                      onChange={(e) => change((b) => updateSkillStep(b, step.index, e.target.value, step.args))}>
+                {withCurrent(skillIds, step.action).map((sid) => <option key={sid} value={sid}>{skillLabel(sid)}</option>)}
+              </select>
+            </div>
+            <SkillArgs id={`skill-${n}-args`} name={`스킬 ${n + 1}`} args={step.args}
+                       onChange={(args) => change((b) => updateSkillStep(b, step.index, step.action, args))} />
+            <button type="button" className="btn btn--quiet" aria-label={`스킬 ${n + 1} 빼기`}
+                    onClick={() => change((b) => removeSkillStep(b, step.index))}>빼기</button>
+          </div>
+        ))}
+        {skillIds.length === 0
+          ? <p className="help">아직 스킬이 없어요. 스킬 메뉴에서 먼저 만들어 주세요.</p>
+          : <button type="button" className="btn" onClick={() => change((b) => addSkillStep(b, skillIds[0] as string))}>스킬 추가</button>}
       </fieldset>
 
       <fieldset className="group">
@@ -310,3 +357,42 @@ function newAsk(doc: BotDoc, block: Block, param: string): string {
   for (let n = 2; taken.has(id); n++) id = `${block.id}_ask_${param}_${n}`;
   return id;
 }
+
+/** A response id for a parameter's validation message that nothing uses yet. */
+function newFail(doc: BotDoc, block: Block, param: string): string {
+  const taken = new Set(Object.keys(doc.responses));
+  let id = `${block.id}_${param}_invalid`;
+  for (let n = 2; taken.has(id); n++) id = `${block.id}_${param}_invalid_${n}`;
+  return id;
+}
+
+/** The options, plus the current value when it is not one of them (e.g. a built-in action). */
+const withCurrent = (options: string[], current: string | undefined) =>
+  current && !options.includes(current) ? [current, ...options] : options;
+
+/** A skill's arguments as name/value rows; values may hold {{ slots.x }}. */
+function SkillArgs({ id, name, args, onChange }: { id: string; name: string; args: Record<string, string>; onChange: (a: Record<string, string>) => void }) {
+  const rows = Object.entries(args);
+  const set = (i: number, key: string, value: string) => onChange(Object.fromEntries(rows.map(([k, v], j) => (j === i ? [key, value] : [k, v]))));
+  return (
+    <div className="skill-args">
+      {rows.map(([key, value], i) => (
+        <div className="skill-arg" key={i}>
+          <label className="visually-hidden" htmlFor={`${id}-${i}-key`}>{name} 인자 {i + 1} 이름</label>
+          <input id={`${id}-${i}-key`} className="input mono" value={key} placeholder="이름" onChange={(e) => set(i, e.target.value, value)} />
+          <label className="visually-hidden" htmlFor={`${id}-${i}-value`}>{name} 인자 {i + 1} 값</label>
+          <input id={`${id}-${i}-value`} className="input" value={value} placeholder="값 (예: {{ slots.location }})" onChange={(e) => set(i, key, e.target.value)} />
+          <button type="button" className="btn btn--quiet" aria-label={`${name} 인자 ${i + 1} 삭제`}
+                  onClick={() => onChange(Object.fromEntries(rows.filter((_, j) => j !== i)))}>삭제</button>
+        </div>
+      ))}
+      <button type="button" className="btn btn--quiet" onClick={() => onChange({ ...args, [nextKey(args)]: "" })}>인자 추가</button>
+    </div>
+  );
+}
+
+const nextKey = (args: Record<string, string>) => {
+  let n = Object.keys(args).length + 1;
+  while (`arg${n}` in args) n += 1;
+  return `arg${n}`;
+};

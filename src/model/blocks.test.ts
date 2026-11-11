@@ -20,7 +20,7 @@ describe("blocks over the engine document", () => {
     expect(kindOf(weather)).toBe("trigger");
     expect(weather.intent).toBe("weather");
     expect(weather.examples).toEqual(SAMPLE.intents?.weather?.examples);
-    expect(weather.params).toEqual([{ name: "location", entity: "location", required: true, default: null,
+    expect(weather.params).toEqual([{ name: "location", entity: "location", required: true, default: null, validation: null,
       ask: { response: "ask_location", kind: "text", rich: null, texts: [SAMPLE.responses.ask_location?.text], quickReplies: ["서울", "부산", "제주"] } }]);
     expect(weather.replies.map((r) => r.response)).toEqual(["weather_report"]);
     expect(weather.steps.map((s) => Object.keys(s)[0])).toEqual(["collect", "action", "respond"]);
