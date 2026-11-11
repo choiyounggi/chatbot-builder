@@ -193,7 +193,9 @@ export function paramUses(doc: BotDoc, block: Block, name: string): string[] {
   const uses: string[] = [];
   const onError = doc.scenarios[block.id]?.on_error;
   const responses = new Set([...block.replies.map((r) => r.response),
-    ...block.params.filter((p) => p.name !== name && p.ask).map((p) => (p.ask as Reply).response), ...(onError ? [onError] : [])]);
+    ...block.params.filter((p) => p.name !== name && p.ask).map((p) => (p.ask as Reply).response),
+    ...block.params.filter((p) => p.name !== name && p.validation).map((p) => (p.validation as { fail: Reply }).fail.response),
+    ...(onError ? [onError] : [])]);
   for (const response of responses) {
     if (responseStrings(doc.responses[response]).some((t) => pattern.test(t))) uses.push(`응답 ${response}`);
   }
@@ -375,4 +377,16 @@ export function removeSkillStep(block: Block, index: number): Block {
   const step = block.steps[index];
   if (!step || !("action" in step)) return block;
   return { ...block, steps: block.steps.filter((_, i) => i !== index) };
+}
+
+/** Where this block reads an action's results ({{ results.<action>.field }} in its responses, or a branch):
+ * removing or switching that action would leave them unknown. */
+export function resultUses(doc: BotDoc, block: Block, action: string): string[] {
+  const pattern = new RegExp(`\\{\\{\\s*results\\.${action}\\.`);
+  const onError = doc.scenarios[block.id]?.on_error;
+  const responses = new Set([...block.replies.map((r) => r.response), ...block.params.flatMap((p) => [
+    ...(p.ask ? [p.ask.response] : []), ...(p.validation ? [p.validation.fail.response] : [])]), ...(onError ? [onError] : [])]);
+  const uses = [...responses].filter((r) => responseStrings(doc.responses[r]).some((t) => pattern.test(t))).map((r) => `응답 ${r}`);
+  if (block.steps.some((step) => "branch" in step && step.branch.on.startsWith(`results.${action}.`))) uses.push("분기");
+  return uses;
 }

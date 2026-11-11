@@ -5,10 +5,11 @@ import { type BlockOption, ReplyEditor } from "../components/ReplyEditor";
 import { useDraft } from "../draft/DraftContext";
 import {
   addParam, addReply, type Block, callersOf, createBlock, deleteBlock, kindOf, listBlocks, looseIntents, newBlockId,
-  addSkillStep, paramUses, readBlock, removeParam, removeReply, removeSkillStep, skillSteps, systemScenarios, textReply,
+  addSkillStep, paramUses, readBlock, removeParam, removeReply, removeSkillStep, resultUses, skillSteps, systemScenarios, textReply,
   updateSkillStep, writeBlock,
 } from "../model/blocks";
 import { type BotDoc, KAKAO, type Step, SYSTEM_ENTITIES } from "../model/doc";
+import { BUILTIN_ACTIONS } from "../model/skills";
 import { isSystemPage, SYSTEM_PAGES, SystemEditor } from "./SystemBlocks";
 
 const KIND_LABEL = { trigger: "발화로 시작", called: "다른 블록에서 호출" } as const;
@@ -158,7 +159,19 @@ function BlockEditor({ id, blocks, embedded = false }: { id: string; blocks: Blo
 
   const groups = [...new Set(Object.values(doc.scenarios).map((s) => s.group).filter((g): g is string => !!g))];
   const skillIds = Object.keys(doc.skills ?? {});
-  const skillLabel = (sid: string) => (doc.skills?.[sid] ? doc.skills[sid].label || sid : `${sid} (내장 액션)`);
+  const actionIds = [...skillIds, ...BUILTIN_ACTIONS.filter((a) => !skillIds.includes(a))];
+  const skillLabel = (sid: string) => (doc.skills?.[sid] ? doc.skills[sid].label || sid
+    : (BUILTIN_ACTIONS as readonly string[]).includes(sid) ? `${sid} (내장 액션)` : `${sid} (없는 스킬)`);
+  /** Switching or removing an action is refused while a reply or branch still reads its results. */
+  const guardResults = (action: string, then: () => void) => {
+    const uses = resultUses(doc, block, action);
+    if (uses.length > 0) {
+      setProblem(`${skillLabel(action).replace(/ \(.*\)$/, "")}의 결과를 아직 쓰고 있어요: ${uses.join(", ")}. 그 문구나 분기에서 먼저 빼 주세요.`);
+      return;
+    }
+    setProblem(null);
+    then();
+  };
   const remove = () => {
     const callers = callersOf(doc, id);
     if (callers.length > 0) {
@@ -271,19 +284,18 @@ function BlockEditor({ id, blocks, embedded = false }: { id: string; blocks: Blo
             <div className="field">
               <label htmlFor={`skill-${n}`}>스킬 {n + 1}</label>
               <select id={`skill-${n}`} className="input" value={step.action}
-                      onChange={(e) => change((b) => updateSkillStep(b, step.index, e.target.value, step.args))}>
-                {withCurrent(skillIds, step.action).map((sid) => <option key={sid} value={sid}>{skillLabel(sid)}</option>)}
+                      onChange={(e) => { const next = e.target.value; guardResults(step.action, () => change((b) => updateSkillStep(b, step.index, next, step.args))); }}>
+                {withCurrent(actionIds, step.action).map((sid) => <option key={sid} value={sid}>{skillLabel(sid)}</option>)}
               </select>
             </div>
             <SkillArgs id={`skill-${n}-args`} name={`스킬 ${n + 1}`} args={step.args}
                        onChange={(args) => change((b) => updateSkillStep(b, step.index, step.action, args))} />
             <button type="button" className="btn btn--quiet" aria-label={`스킬 ${n + 1} 빼기`}
-                    onClick={() => change((b) => removeSkillStep(b, step.index))}>빼기</button>
+                    onClick={() => guardResults(step.action, () => change((b) => removeSkillStep(b, step.index)))}>빼기</button>
           </div>
         ))}
-        {skillIds.length === 0
-          ? <p className="help">아직 스킬이 없어요. 스킬 메뉴에서 먼저 만들어 주세요.</p>
-          : <button type="button" className="btn" onClick={() => change((b) => addSkillStep(b, skillIds[0] as string))}>스킬 추가</button>}
+        {skillIds.length === 0 && <p className="help">아직 스킬이 없어요. 스킬 메뉴에서 먼저 만들어 주세요.</p>}
+        <button type="button" className="btn" onClick={() => change((b) => addSkillStep(b, actionIds[0] as string))}>스킬 추가</button>
       </fieldset>
 
       <fieldset className="group">
@@ -370,25 +382,49 @@ function newFail(doc: BotDoc, block: Block, param: string): string {
 const withCurrent = (options: string[], current: string | undefined) =>
   current && !options.includes(current) ? [current, ...options] : options;
 
-/** A skill's arguments as name/value rows; values may hold {{ slots.x }}. */
+/** A skill's arguments as name/value rows; values may hold {{ slots.x }}. The rows are kept here so a
+ * name being typed that collides with another row (or is empty) never merges or reorders rows; only
+ * rows with distinct, non-empty names reach the draft. */
 function SkillArgs({ id, name, args, onChange }: { id: string; name: string; args: Record<string, string>; onChange: (a: Record<string, string>) => void }) {
-  const rows = Object.entries(args);
-  const set = (i: number, key: string, value: string) => onChange(Object.fromEntries(rows.map(([k, v], j) => (j === i ? [key, value] : [k, v]))));
+  const [rows, setRows] = useState(() => Object.entries(args).map(([key, value]) => ({ key, value })));
+  const [seen, setSeen] = useState(args);
+  if (JSON.stringify(seen) !== JSON.stringify(args)) { // changed outside (another tab of the editor, undo, reload)
+    setSeen(args);
+    if (JSON.stringify(toArgs(rows)) !== JSON.stringify(args)) setRows(Object.entries(args).map(([key, value]) => ({ key, value })));
+  }
+  const update = (next: { key: string; value: string }[]) => {
+    setRows(next);
+    const out = toArgs(next);
+    setSeen(out);
+    onChange(out);
+  };
+  const duplicate = (i: number) => rows.some((r, j) => j < i && r.key === rows[i]?.key); // the earlier row keeps the name
   return (
     <div className="skill-args">
-      {rows.map(([key, value], i) => (
+      {rows.map((row, i) => (
         <div className="skill-arg" key={i}>
           <label className="visually-hidden" htmlFor={`${id}-${i}-key`}>{name} 인자 {i + 1} 이름</label>
-          <input id={`${id}-${i}-key`} className="input mono" value={key} placeholder="이름" onChange={(e) => set(i, e.target.value, value)} />
+          <input id={`${id}-${i}-key`} className="input mono" value={row.key} placeholder="이름" aria-invalid={duplicate(i) || !row.key}
+                 onChange={(e) => update(rows.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))} />
           <label className="visually-hidden" htmlFor={`${id}-${i}-value`}>{name} 인자 {i + 1} 값</label>
-          <input id={`${id}-${i}-value`} className="input" value={value} placeholder="값 (예: {{ slots.location }})" onChange={(e) => set(i, key, e.target.value)} />
+          <input id={`${id}-${i}-value`} className="input" value={row.value} placeholder="값 (예: {{ slots.location }})"
+                 onChange={(e) => update(rows.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))} />
           <button type="button" className="btn btn--quiet" aria-label={`${name} 인자 ${i + 1} 삭제`}
-                  onClick={() => onChange(Object.fromEntries(rows.filter((_, j) => j !== i)))}>삭제</button>
+                  onClick={() => update(rows.filter((_, j) => j !== i))}>삭제</button>
+          {duplicate(i) && <p className="help" data-tone="warn">같은 이름의 인자가 있어요. 이름을 바꿔야 저장돼요.</p>}
+          {!row.key && <p className="help" data-tone="warn">이름을 써야 저장돼요.</p>}
         </div>
       ))}
-      <button type="button" className="btn btn--quiet" onClick={() => onChange({ ...args, [nextKey(args)]: "" })}>인자 추가</button>
+      <button type="button" className="btn btn--quiet" onClick={() => update([...rows, { key: nextKey(toArgs(rows)), value: "" }])}>인자 추가</button>
     </div>
   );
+}
+
+/** The rows that can be written: named, and the first row with that name (a later duplicate waits). */
+function toArgs(rows: { key: string; value: string }[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const r of rows) if (r.key && !(r.key in out)) out[r.key] = r.value;
+  return out;
 }
 
 const nextKey = (args: Record<string, string>) => {

@@ -43,11 +43,11 @@ describe("listSkills", () => {
 
 describe("skillUsedBy", () => {
   it("names every block that calls the skill in a step, deduplicated", () => {
-    expect(skillUsedBy(base(), "get_forecast")).toEqual(["날씨 안내", "다른 블록"]);
+    expect(skillUsedBy(base(), "get_forecast")).toEqual(["날씨 안내(check_weather)", "다른 블록(other)"]);
   });
 
   it("names a block that uses the skill only in a slot's validation", () => {
-    expect(skillUsedBy(base(), "lookup_city")).toEqual(["날씨 안내"]);
+    expect(skillUsedBy(base(), "lookup_city")).toEqual(["날씨 안내(check_weather)"]);
   });
 
   it("is empty for a skill nothing calls", () => {
@@ -81,7 +81,7 @@ describe("addSkill / removeSkill", () => {
       throw new Error("should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(SkillInUse);
-      expect((error as SkillInUse).blocks).toEqual(["날씨 안내", "다른 블록"]);
+      expect((error as SkillInUse).blocks).toEqual(["날씨 안내(check_weather)", "다른 블록(other)"]);
     }
   });
 });
@@ -117,7 +117,8 @@ describe("validateUrl", () => {
     expect(validateUrl("", false)).toBeNull();
   });
   it("refuses non-ASCII addresses", () => expect(validateUrl("https://예시.example.com")).toMatch(/ASCII/));
-  it("refuses a malformed address", () => expect(validateUrl("not a url")).toMatch(/형식/));
+  it("refuses a malformed address", () => expect(validateUrl("not a url")).toMatch(/공백/));
+  it("refuses what has the shape but is not a URL", () => expect(validateUrl("http://[::1")).toMatch(/형식/));
   it("refuses a non-http(s) scheme", () => expect(validateUrl("ftp://example.com")).toMatch(/http/));
 });
 
@@ -150,7 +151,7 @@ describe("validateHeaderValue / secretNamesIn", () => {
     expect(secretNamesIn("Bearer {{ secret.API_KEY }}")).toEqual(["API_KEY"]);
     expect(secretNamesIn("{{ secret.A }}-{{secret.B}}")).toEqual(["A", "B"]);
   });
-  it("refuses an empty value", () => expect(validateHeaderValue("")).toMatch(/입력/));
+  it("accepts an empty value (HTTP allows it)", () => expect(validateHeaderValue("")).toBeNull());
   it("refuses non-ASCII characters", () => expect(validateHeaderValue("값")).toMatch(/ASCII/));
   it("refuses a line break", () => expect(validateHeaderValue("a\nb")).toMatch(/줄바꿈/));
   it("refuses any {{ }} other than a secret template", () => {

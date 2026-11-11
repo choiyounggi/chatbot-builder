@@ -1,5 +1,5 @@
 // B5: the skills screen (목록·에디터·삭제·테스트 실행·오류 내역·비밀값).
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient, Providers } from "../App";
@@ -127,9 +127,9 @@ describe("에디터", () => {
     const url = screen.getByLabelText("URL");
     await userEvent.clear(url);
     await userEvent.type(url, "ftp://example.com");
-    expect(await screen.findByText("http:// 또는 https://로 시작해야 해요")).toBeInTheDocument();
+    expect(await screen.findByText("http:// 또는 https://와 호스트로 시작하고, 공백이 없어야 해요")).toBeInTheDocument();
     await userEvent.clear(url);
-    await userEvent.type(url, "not a url");
+    await userEvent.type(url, "http://[[::1"); // "[[" types one "[": passes the engine shape check, not a URL
     expect(await screen.findByText("주소 형식이 올바르지 않아요")).toBeInTheDocument();
   });
 
@@ -188,7 +188,7 @@ describe("스킬 삭제", () => {
     renderSkills();
     await userEvent.click(await screen.findByText("날씨 API"));
     await userEvent.click(screen.getByRole("button", { name: "스킬 삭제" }));
-    expect(await screen.findByText("이 스킬을 쓰는 블록이 있어요: 날씨 안내. 그곳에서 먼저 빼 주세요.")).toBeInTheDocument();
+    expect(await screen.findByText("이 스킬을 쓰는 블록이 있어요: 날씨 안내(check_weather). 그곳에서 먼저 빼 주세요.")).toBeInTheDocument();
     expect(screen.getByText("get_forecast")).toBeInTheDocument(); // still there
   });
 
@@ -338,5 +338,72 @@ describe("비밀값", () => {
     vi.stubGlobal("confirm", vi.fn(() => true));
     await userEvent.click(screen.getByRole("button", { name: "삭제" }));
     expect(await screen.findByText("‘API_KEY’ 비밀값을 지웠어요.")).toBeInTheDocument();
+  });
+});
+
+describe("리뷰 후 고친 것", () => {
+  it("목록에서 쓸 수 없는 주소의 스킬에 경고를 단다", async () => {
+    const doc = structuredClone(DOC);
+    doc.skills.ping.url = "http://내부.example/ping"; // not ASCII: the engine refuses it
+    engine({ draft: () => ({ body: doc, headers: { ETag: '"1"' } }) });
+    renderSkills();
+    const bad = (await screen.findByText("ping")).closest("button") as HTMLElement;
+    expect(within(bad).getByText("주소를 고쳐야 쓸 수 있어요")).toBeInTheDocument();
+    const good = screen.getByText("날씨 API").closest("button") as HTMLElement;
+    expect(within(good).queryByText("주소를 고쳐야 쓸 수 있어요")).toBeNull();
+  });
+
+  it("테스트 실행이 404면 저장한 뒤 다시 하라고 안내한다", async () => {
+    engine({ test: () => ({ status: 404, body: { detail: "no skill get_forecast" } }) });
+    renderSkills();
+    await userEvent.click(await screen.findByText("날씨 API"));
+    await userEvent.click(screen.getByRole("button", { name: "테스트 실행" }));
+    expect(await screen.findByText("저장된 초안에 이 스킬이 없어요. 저장한 뒤 다시 실행해 주세요.")).toBeInTheDocument();
+  });
+
+  it("테스트 실행이 422면 엔진이 준 문제 목록을 보여준다", async () => {
+    engine({ test: () => ({ status: 422, body: { detail: ["skills.ping: url은 http(s) 주소여야 해요"] } }) });
+    renderSkills();
+    await userEvent.click(await screen.findByText("날씨 API"));
+    await userEvent.click(screen.getByRole("button", { name: "테스트 실행" }));
+    expect(await screen.findByText("저장된 초안에 고칠 곳이 있어 테스트할 수 없어요: skills.ping: url은 http(s) 주소여야 해요")).toBeInTheDocument();
+  });
+
+  it("NUL 문자가 든 비밀값은 저장할 수 없다", async () => {
+    engine();
+    renderSkills();
+    await userEvent.click(screen.getByRole("button", { name: "비밀값" }));
+    await screen.findByText("API_KEY");
+    await userEvent.type(screen.getByLabelText("이름"), "API_KEY");
+    fireEvent.change(screen.getByLabelText("값"), { target: { value: "abc\0def" } }); // a paste can carry it
+    expect(screen.getByText("줄바꿈과 NUL 문자는 쓸 수 없어요")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "비밀값 저장" })).toBeDisabled();
+  });
+
+  it("지우려는 비밀값이 이미 없으면(404) 그렇게 알리고 목록을 다시 읽는다", async () => {
+    let reads = 0;
+    engine({
+      secrets: () => {
+        reads += 1;
+        return { body: { bot: "sample", items: reads === 1 ? [{ name: "API_KEY", updated_at: "2026-11-10T01:00:00+00:00" }] : [] } };
+      },
+      deleteSecret: () => ({ status: 404, body: { detail: "no secret API_KEY" } }),
+    });
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    renderSkills();
+    await userEvent.click(screen.getByRole("button", { name: "비밀값" }));
+    await userEvent.click(await screen.findByRole("button", { name: "삭제" }));
+    expect(await screen.findByText("‘API_KEY’ 비밀값은 이미 없어요.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "삭제" })).toBeNull());
+    expect(reads).toBe(2);
+  });
+
+  it("비밀값 칸은 브라우저 자동 완성·비밀번호 저장을 끈다", async () => {
+    engine();
+    renderSkills();
+    await userEvent.click(screen.getByRole("button", { name: "비밀값" }));
+    await screen.findByText("API_KEY");
+    expect(screen.getByLabelText("이름")).toHaveAttribute("autocomplete", "off");
+    expect(screen.getByLabelText("값")).toHaveAttribute("autocomplete", "new-password");
   });
 });

@@ -61,6 +61,7 @@ function SkillsList() {
                       onClick={() => setSelected(r.id)}>
                 <span className="name">{r.label}</span>
                 <span className="meta">{r.host || "주소 없음"} · 연결된 블록 {r.usedBy}개</span>
+                {validateUrl(doc.skills?.[r.id]?.url ?? "") && <span className="meta" data-tone="warn">주소를 고쳐야 쓸 수 있어요</span>}
               </button>
             </li>
           ))}
@@ -249,7 +250,12 @@ function SkillTest({ id }: { id: string }) {
         </button>
       </div>
       <div role="status">
-        {run.isError && <ErrorNotice error={run.error} onRetry={() => run.mutate()} />}
+        {run.isError && (run.error instanceof ApiError && (run.error.status === 404 || run.error.status === 422)
+          ? <p className="notice" data-tone="error">
+              {run.error.status === 404 ? "저장된 초안에 이 스킬이 없어요. 저장한 뒤 다시 실행해 주세요."
+                : `저장된 초안에 고칠 곳이 있어 테스트할 수 없어요: ${run.error.problems.join(", ") || run.error.message}`}
+            </p>
+          : <ErrorNotice error={run.error} onRetry={() => run.mutate()} />)}
         {run.data && <TestResult result={run.data} />}
       </div>
     </fieldset>
@@ -296,7 +302,7 @@ function secretValueError(value: string): string | null {
   if (!value) return "값을 입력해 주세요";
   if (value.length > 4000) return "4000자 이하여야 해요";
   if ([...value].some((c) => c.charCodeAt(0) > 127)) return "ASCII 문자만 쓸 수 있어요";
-  if (/[\r\n]/.test(value)) return "줄바꿈은 쓸 수 없어요";
+  if (/[\r\n\0]/.test(value)) return "줄바꿈과 NUL 문자는 쓸 수 없어요";
   return null;
 }
 
@@ -324,7 +330,12 @@ function Secrets() {
       setNotice(`‘${n}’ 비밀값을 지웠어요.`);
       refresh();
     },
-    onError: () => setNotice("지우지 못했어요. 잠시 후 다시 시도해 주세요."),
+    onError: (error, n) => {
+      if (error instanceof ApiError && error.status === 404) { // already gone (deleted elsewhere): show the list as it is
+        setNotice(`‘${n}’ 비밀값은 이미 없어요.`);
+        refresh();
+      } else setNotice("지우지 못했어요. 잠시 후 다시 시도해 주세요.");
+    },
   });
   const nameProblem = name ? (SECRET_NAME_PATTERN.test(name) ? null : "영문자나 밑줄로 시작하고 영문자·숫자·밑줄만 쓸 수 있어요") : null;
   const valueProblem = value ? secretValueError(value) : null;
@@ -354,13 +365,13 @@ function Secrets() {
       <form className="form" aria-label="비밀값 추가" onSubmit={(e) => { e.preventDefault(); if (ready) save.mutate(); }}>
         <div className="field">
           <label htmlFor="secret-name">이름</label>
-          <input id="secret-name" className="input" list="secret-names" value={name} onChange={(e) => setName(e.target.value)} />
+          <input id="secret-name" className="input" list="secret-names" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} />
           <datalist id="secret-names">{(secrets.data ?? []).map((s) => <option key={s.name} value={s.name} />)}</datalist>
           <p className="help" data-tone={nameProblem ? "error" : undefined}>{nameProblem ?? ""}</p>
         </div>
         <div className="field">
           <label htmlFor="secret-value">값</label>
-          <input id="secret-value" type="password" className="input" value={value} onChange={(e) => setValue(e.target.value)} />
+          <input id="secret-value" type="password" className="input" autoComplete="new-password" value={value} onChange={(e) => setValue(e.target.value)} />
           <p className="help" data-tone={valueProblem ? "error" : undefined}>{valueProblem ?? ""}</p>
         </div>
         <div className="form-actions">

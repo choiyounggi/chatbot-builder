@@ -69,3 +69,43 @@ describe("skills in a block", () => {
     expect(doc.responses.check_weather_location_invalid).toBeUndefined();
   });
 });
+
+describe("review fixes", () => {
+  it("keeps argument rows apart when a name would collide, and keeps their order", async () => {
+    const { state } = botEngine({ doc: withSkills() });
+    renderAt("/bots/sample/scenarios/check_weather");
+    const e = await editor();
+    await userEvent.click(within(e).getByRole("button", { name: "인자 추가" }));
+    const second = within(e).getByLabelText("스킬 1 인자 2 이름");
+    await userEvent.clear(second);
+    await userEvent.type(second, "location"); // the same name as row 1
+    expect(within(e).getAllByText(/같은 이름의 인자가 있어요/)).toHaveLength(1); // only the later row waits
+    expect(within(e).getByLabelText("스킬 1 인자 1 이름")).toHaveValue("location");
+    expect(within(e).getByLabelText("스킬 1 인자 1 값")).toHaveValue("{{ slots.location }}"); // the first row is untouched
+    await userEvent.type(second, "2");
+    await userEvent.type(within(e).getByLabelText("스킬 1 인자 2 값"), "x");
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+    await screen.findByText(/저장했어요/);
+    expect(saved(state).scenarios.check_weather?.steps[1]).toEqual({ action: "get_weather", args: { location: "{{ slots.location }}", location2: "x" } });
+  });
+
+  it("refuses to remove or switch a skill whose results a reply still reads", async () => {
+    botEngine({ doc: withSkills() });
+    renderAt("/bots/sample/scenarios/check_weather");
+    const e = await editor();
+    await userEvent.click(within(e).getByRole("button", { name: "스킬 1 빼기" }));
+    expect(within(e).getByRole("alert")).toHaveTextContent("get_weather의 결과를 아직 쓰고 있어요: 응답 weather_report");
+    await userEvent.selectOptions(within(e).getByLabelText("스킬 1", { exact: true }), "get_order");
+    expect(within(e).getByLabelText("스킬 1", { exact: true })).toHaveValue("get_weather");
+    expect(screen.getByRole("button", { name: "저장" })).toBeDisabled(); // nothing changed
+  });
+
+  it("offers the built-in actions too", async () => {
+    botEngine({ doc: withSkills() });
+    renderAt("/bots/sample/scenarios/greet");
+    const e = await editor();
+    await userEvent.click(within(e).getByRole("button", { name: "스킬 추가" }));
+    const options = [...(within(e).getByLabelText("스킬 1", { exact: true }) as HTMLSelectElement).options].map((o) => o.textContent);
+    expect(options).toEqual(["주문 조회", "check_city", "get_weather (내장 액션)", "get_temperature (내장 액션)", "now (내장 액션)"]);
+  });
+});

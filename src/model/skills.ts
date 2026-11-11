@@ -35,15 +35,12 @@ function hostOf(url: string): string {
   }
 }
 
-/** Labels of blocks whose scenario calls this skill (an action step, or a slot's validation). */
+/** The blocks that call or validate with this skill, one per block: "label(id)". */
 export function skillUsedBy(doc: BotDoc, id: string): string[] {
-  const used = new Set<string>();
-  for (const scenario of Object.values(doc.scenarios)) {
-    const label = scenario.label || "(이름 없음)";
-    if (scenario.steps.some((step) => "action" in step && step.action === id)) used.add(label);
-    if (Object.values(scenario.slots ?? {}).some((slot) => slot.validation?.action === id)) used.add(label);
-  }
-  return [...used];
+  return Object.entries(doc.scenarios)
+    .filter(([, scenario]) => scenario.steps.some((step) => "action" in step && step.action === id)
+      || Object.values(scenario.slots ?? {}).some((slot) => slot.validation?.action === id))
+    .map(([sid, scenario]) => `${scenario.label || "(이름 없음)"}(${sid})`);
 }
 
 /** A new skill with an id from `newId`, an empty URL and the default timeout. */
@@ -82,17 +79,21 @@ export function validateSkillId(id: string, doc: BotDoc): string | null {
   return null;
 }
 
+/** The engine's rule (chatcore bot/schema.py SKILL_URL): http(s)://host..., no spaces, at most 2000 characters. */
+const ENGINE_URL = /^https?:\/\/[^\s/?#]+\S*$/;
+
 /** `required: false`: an empty value is fine (e.g. 테스트 URL). */
 export function validateUrl(value: string, required = true): string | null {
   if (!value) return required ? "주소를 입력해 주세요" : null;
+  if (value.length > 2000) return "2000자까지 쓸 수 있어요";
   if (!isAscii(value)) return "ASCII 문자만 쓸 수 있어요";
+  if (!ENGINE_URL.test(value)) return "http:// 또는 https://와 호스트로 시작하고, 공백이 없어야 해요";
   let url: URL;
   try {
     url = new URL(value);
   } catch {
     return "주소 형식이 올바르지 않아요";
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return "http:// 또는 https://로 시작해야 해요";
   if (!url.hostname) return "호스트가 없어요";
   return null;
 }
@@ -110,9 +111,8 @@ export function validateHeaderName(name: string): string | null {
 
 /** ASCII, no line breaks, and the only `{{ }}` allowed is `{{ secret.NAME }}`. */
 export function validateHeaderValue(value: string): string | null {
-  if (!value) return "값을 입력해 주세요";
   if (!isAscii(value)) return "ASCII 문자만 쓸 수 있어요";
-  if (/[\r\n]/.test(value)) return "줄바꿈은 쓸 수 없어요";
+  if (/[\r\n\0]/.test(value)) return "줄바꿈과 NUL 문자는 쓸 수 없어요";
   if (/\{\{|\}\}/.test(value.replace(SECRET_TEMPLATE, ""))) return "{{ secret.이름 }} 형식만 쓸 수 있어요";
   return null;
 }
