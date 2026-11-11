@@ -10,8 +10,8 @@ import { Knowledge } from "./Knowledge";
 
 afterEach(() => vi.unstubAllGlobals());
 
-function renderKnowledge() {
-  const client = createQueryClient();
+function renderKnowledge(shared?: ReturnType<typeof createQueryClient>) {
+  const client = shared ?? createQueryClient();
   client.setDefaultOptions({ queries: { ...client.getDefaultOptions().queries, retryDelay: 0 } });
   return render(
     <Providers client={client}>
@@ -114,7 +114,7 @@ describe("불러오기", () => {
     await userEvent.click(screen.getByRole("button", { name: "FAQ 추가" }));
     await userEvent.type(screen.getByLabelText("FAQ 1 질문"), "새 질문");
     await userEvent.type(screen.getByLabelText("FAQ 1 답"), "새 답");
-    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+    await userEvent.click(screen.getByRole("button", { name: "지식베이스 저장" }));
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0]?.etag).toBeNull();
     expect(puts[0]?.body.faq).toEqual([{ id: "faq_1", question: "새 질문", answer: "새 답" }]);
@@ -128,20 +128,20 @@ describe("저장", () => {
     const question = await screen.findByLabelText("FAQ 1 질문");
     await userEvent.clear(question);
     await userEvent.type(question, "고친 질문");
-    expect(screen.getByRole("button", { name: "저장" })).toBeEnabled();
-    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+    expect(screen.getByRole("button", { name: "지식베이스 저장" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "지식베이스 저장" }));
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0]?.etag).toBe('"1"');
     expect(puts[0]?.body.faq).toEqual([{ id: "faq_1", question: "고친 질문", answer: "평일 9시부터 6시까지예요." }]);
-    expect(await screen.findByText("저장했어요 · 리비전 2")).toBeInTheDocument();
+    expect(await screen.findByText("지식베이스를 저장했어요 · 리비전 2")).toBeInTheDocument();
   });
 
   it("저장이 안 됐거나 바뀐 게 없으면 저장 버튼이 꺼진다", async () => {
     kbEngine();
     renderKnowledge();
     await screen.findByDisplayValue("영업 시간이 어떻게 되나요?");
-    expect(screen.getByRole("button", { name: "저장" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "변경 취소" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "지식베이스 저장" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "지식베이스 변경 취소" })).toBeDisabled();
   });
 
   it("412면 다른 곳에서 바뀌었다고 안내하고, 다시 불러오기를 누르면 새로 읽는다", async () => {
@@ -153,12 +153,12 @@ describe("저장", () => {
     renderKnowledge();
     const question = await screen.findByLabelText("FAQ 1 질문");
     await userEvent.type(question, "!");
-    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+    await userEvent.click(screen.getByRole("button", { name: "지식베이스 저장" }));
     expect(await screen.findByText("다른 곳에서 지식베이스가 바뀌었어요. 다시 불러온 뒤 고쳐 주세요.")).toBeInTheDocument();
     expect(puts).toHaveLength(1);
     await userEvent.click(screen.getByRole("button", { name: "다시 불러오기" }));
     await waitFor(() => expect(reads).toBe(2));
-    expect(screen.getByRole("button", { name: "저장" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "지식베이스 저장" })).toBeDisabled();
   });
 
   it("저장은 유효하지 않아도 되고, 엔진이 돌려준 오류 목록을 보여준다", async () => {
@@ -171,7 +171,7 @@ describe("저장", () => {
     renderKnowledge();
     const question = await screen.findByLabelText("FAQ 1 질문");
     await userEvent.type(question, "!");
-    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+    await userEvent.click(screen.getByRole("button", { name: "지식베이스 저장" }));
     expect(await screen.findByText("저장했지만 고칠 곳이 1개 있어요")).toBeInTheDocument();
     expect(screen.getByText("faq.0.question: must not be blank")).toBeInTheDocument();
   });
@@ -203,7 +203,7 @@ describe("FAQ", () => {
     await userEvent.click(screen.getByRole("button", { name: "FAQ 추가" }));
     await userEvent.type(screen.getByLabelText("FAQ 2 질문"), " 영업 시간이 어떻게 되나요? ");
     expect(await screen.findAllByText("같은 질문이 이미 있어요")).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "저장" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "지식베이스 저장" })).toBeEnabled();
   });
 
   it("답안 추천형을 고르면 안내 문구를 고칠 수 있다", async () => {
@@ -410,5 +410,31 @@ describe("검색 테스트", () => {
     await userEvent.type(await screen.findByLabelText("검색어"), "질문");
     await userEvent.click(screen.getByRole("button", { name: "검색" }));
     expect(await screen.findByText("아직 색인이 없어요. 버전 탭에서 먼저 색인을 만들어 주세요.")).toBeInTheDocument();
+  });
+});
+
+
+describe("화면을 떠났다 와도", () => {
+  it("저장하지 않은 편집이 남아 있다", async () => {
+    kbEngine();
+    const client = createQueryClient();
+    const first = renderKnowledge(client);
+    const q = await screen.findByLabelText("FAQ 1 질문");
+    await userEvent.type(q, " 주말도요?");
+    first.unmount();
+    renderKnowledge(client);
+    expect(await screen.findByLabelText("FAQ 1 질문")).toHaveValue("영업 시간이 어떻게 되나요? 주말도요?");
+    expect(screen.getByText("지식베이스에 저장 안 된 변경이 있어요")).toBeInTheDocument();
+  });
+
+  it("탭을 바꿔도 색인 작업 결과를 계속 보여준다", async () => {
+    kbEngine();
+    renderKnowledge();
+    await userEvent.click(await screen.findByRole("button", { name: "버전" }));
+    await userEvent.click(await screen.findByRole("button", { name: "색인 만들기" }));
+    expect(await screen.findByText("v1 색인 완료 · FAQ 1개 · 조각 2개")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "FAQ" }));
+    await userEvent.click(screen.getByRole("button", { name: "버전" }));
+    expect(await screen.findByText("v1 색인 완료 · FAQ 1개 · 조각 2개")).toBeInTheDocument();
   });
 });

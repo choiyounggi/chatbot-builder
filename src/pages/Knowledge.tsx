@@ -33,7 +33,12 @@ export function Knowledge() {
   const storedEtag: string | null = query.data ? query.data.etag : null;
   const hasSaved = query.isSuccess && query.data !== null;
 
-  const [edit, setEdit] = useState<KbEdit | null>(null);
+  // kept in the query cache, not in the page: going to another menu and back keeps unsaved edits
+  const edit = useQuery({ queryKey: ["kbEdit", botId], queryFn: () => null as KbEdit | null, initialData: null,
+                          staleTime: Infinity, gcTime: Infinity }).data;
+  const setEdit = useCallback((next: KbEdit | null | ((current: KbEdit | null) => KbEdit | null)) => {
+    queryClient.setQueryData<KbEdit | null>(["kbEdit", botId], (current) => (typeof next === "function" ? next(current ?? null) : next));
+  }, [queryClient, botId]);
   const [lastSave, setLastSave] = useState<KbSaved | null>(null);
   const doc = query.isSuccess ? (edit?.kb ?? storedDoc) : null;
   const dirty = query.isSuccess && edit !== null && !sameKb(edit.kb, storedDoc);
@@ -45,7 +50,7 @@ export function Knowledge() {
       const next = change(structuredClone(base.kb));
       return base.base === storedEtag && sameKb(next, storedDoc) ? null : { kb: next, base: base.base };
     });
-  }, [query.isSuccess, storedDoc, storedEtag]);
+  }, [query.isSuccess, storedDoc, storedEtag, setEdit]);
 
   const save = useMutation({
     mutationFn: (sent: KbEdit) => saveKbDraft(botId, sent.kb, sent.base),
@@ -89,13 +94,13 @@ export function Knowledge() {
         <div className="savebar-wrap">
           <div className="savebar" data-dirty={dirty}>
             <p className="status" role="status">
-              {save.isPending ? "저장 중…" : dirty ? "저장 안 된 변경이 있어요"
-                : lastSave ? `저장했어요 · 리비전 ${lastSave.revision}` : "변경 없음"}
+              {save.isPending ? "지식베이스 저장 중…" : dirty ? "지식베이스에 저장 안 된 변경이 있어요"
+                : lastSave ? `지식베이스를 저장했어요 · 리비전 ${lastSave.revision}` : "지식베이스 변경 없음"}
             </p>
             <span className="spacer" />
-            <button type="button" className="btn btn--quiet" onClick={discard} disabled={!dirty || save.isPending}>변경 취소</button>
+            <button type="button" className="btn btn--quiet" onClick={discard} disabled={!dirty || save.isPending}>지식베이스 변경 취소</button>
             <button type="button" className="btn btn--primary" onClick={doSave} disabled={!dirty || save.isPending} aria-busy={save.isPending}>
-              {save.isPending ? "저장 중…" : "저장"}
+              {save.isPending ? "저장 중…" : "지식베이스 저장"}
             </button>
           </div>
           {save.error instanceof ConflictError && (
@@ -374,8 +379,9 @@ function VersionsTab({ botId, dirty, hasSaved }: { botId: string; dirty: boolean
     enabled: selected !== null,
   });
 
-  const [jobId, setJobId] = useState<string | null>(null);
-  const build = useMutation({ mutationFn: () => startKbBuild(botId), onSuccess: (job) => setJobId(job.id) });
+  const jobKey = ["kbBuildJobId", botId]; // in the query cache: switching tabs keeps following the job
+  const jobId = useQuery({ queryKey: jobKey, queryFn: () => null as string | null, initialData: null, staleTime: Infinity, gcTime: Infinity }).data;
+  const build = useMutation({ mutationFn: () => startKbBuild(botId), onSuccess: (job) => queryClient.setQueryData(jobKey, job.id) });
   const job = useQuery({
     queryKey: ["kbBuildJob", jobId],
     queryFn: () => getJob(jobId as string),
