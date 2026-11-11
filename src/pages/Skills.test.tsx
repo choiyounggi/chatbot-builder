@@ -300,7 +300,7 @@ describe("비밀값", () => {
     const value = screen.getByLabelText("값");
     expect(value).toHaveAttribute("type", "password");
     await userEvent.type(value, "토큰아님-ascii-value");
-    expect(screen.getByRole("button", { name: "저장" })).toBeDisabled(); // the name must be a plain token
+    expect(screen.getByRole("button", { name: "비밀값 저장" })).toBeDisabled(); // the name must be a plain token
   });
 
   it("기존 이름으로 값을 바꿔 저장한다(값은 다시 보여주지 않음)", async () => {
@@ -310,7 +310,7 @@ describe("비밀값", () => {
     await screen.findByText("API_KEY");
     await userEvent.type(screen.getByLabelText("이름"), "API_KEY");
     await userEvent.type(screen.getByLabelText("값"), "new-secret-value");
-    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+    await userEvent.click(screen.getByRole("button", { name: "비밀값 저장" }));
     expect(await screen.findByText("‘API_KEY’ 비밀값을 저장했어요.")).toBeInTheDocument();
     expect(screen.getByLabelText("값")).toHaveValue("");
     expect(posts[0]).toEqual({ path: "put-secret", body: { value: "new-secret-value" } });
@@ -323,7 +323,7 @@ describe("비밀값", () => {
     await screen.findByText("API_KEY");
     await userEvent.type(screen.getByLabelText("이름"), "API_KEY");
     await userEvent.type(screen.getByLabelText("값"), "x");
-    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+    await userEvent.click(screen.getByRole("button", { name: "비밀값 저장" }));
     expect(await screen.findByText("value must be 1-4000 ASCII characters")).toBeInTheDocument();
   });
 

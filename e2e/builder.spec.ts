@@ -110,3 +110,42 @@ test("a misunderstood sentence added to a block, trained and deployed, goes to t
 
   expect(await say("e2e-queue-2")).toEqual(["ask_location"]); // the weather block starts and asks where
 });
+
+test("a skill made in the builder is tested, connected to a block, and answers in the chat", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "샘플 봇" }).click();
+  const menu = page.getByRole("navigation", { name: "봇 메뉴" });
+  await menu.getByRole("link", { name: "스킬" }).click();
+
+  await page.getByRole("button", { name: "새 스킬" }).click();
+  await page.getByLabel("이름", { exact: true }).fill("주문 조회");
+  await page.getByLabel("URL", { exact: true }).fill("http://127.0.0.1:8799/order"); // e2e/skill-server.mjs
+  await page.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "저장했어요" })).toBeVisible();
+
+  await page.getByRole("button", { name: "파라미터 추가" }).click();
+  await page.getByLabel("파라미터 1 이름").fill("no");
+  await page.getByLabel("파라미터 1 값").fill("7");
+  await page.getByRole("button", { name: "테스트 실행" }).click();
+  await expect(page.getByText(/^성공 · 200 · \d+ms$/)).toBeVisible();
+  await expect(page.locator("pre")).toContainText('"order": "A-7"');
+
+  await menu.getByRole("link", { name: "시나리오" }).click();
+  await page.getByRole("link", { name: /칭찬 답례/ }).click();
+  const editor = page.getByRole("region", { name: "블록 칭찬 답례" });
+  await editor.getByRole("button", { name: "스킬 추가" }).click();
+  await expect(editor.getByLabel("스킬 1", { exact: true })).toHaveValue("skill_1");
+  await editor.getByRole("button", { name: "인자 추가" }).click();
+  await editor.getByLabel("스킬 1 인자 1 이름").fill("no");
+  await editor.getByLabel("스킬 1 인자 1 값").fill("3");
+  await editor.getByLabel("응답 1 문구 1").fill("주문 {{ results.skill_1.order }}은 {{ results.skill_1.status }}이에요.");
+  await page.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "저장했어요" })).toBeVisible();
+
+  await page.getByRole("button", { name: "봇테스트" }).click();
+  const panel = page.getByRole("complementary", { name: "봇테스트" });
+  await expect(panel.getByText(/테스트 빌드 .* 준비됨/)).toBeVisible({ timeout: 30_000 });
+  await panel.getByLabel("테스트할 발화").fill("너 정말 똑똑하네");
+  await panel.getByRole("button", { name: "보내기" }).click();
+  await expect(panel.getByRole("list", { name: "테스트 대화" }).getByText("주문 A-3은 배송 중이에요.")).toBeVisible();
+});

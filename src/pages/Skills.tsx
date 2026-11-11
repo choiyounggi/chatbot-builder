@@ -364,7 +364,7 @@ function Secrets() {
           <p className="help" data-tone={valueProblem ? "error" : undefined}>{valueProblem ?? ""}</p>
         </div>
         <div className="form-actions">
-          <button type="submit" className="btn btn--primary" disabled={!ready || save.isPending}>저장</button>
+          <button type="submit" className="btn btn--primary" disabled={!ready || save.isPending}>비밀값 저장</button>
         </div>
       </form>
     </section>

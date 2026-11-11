@@ -30,9 +30,9 @@ describe("bot shell", () => {
   it("says which step builds a section that does not exist yet", async () => {
     engine();
     renderAt("/bots/sample/settings");
-    await userEvent.click(await screen.findByRole("link", { name: "스킬" }));
-    expect(screen.getByRole("heading", { name: "스킬" })).toBeInTheDocument();
-    expect(screen.getByText("B5 — 스킬 화면")).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("link", { name: "분석" }));
+    expect(screen.getByRole("heading", { name: "분석" })).toBeInTheDocument();
+    expect(screen.getByText("B7 — 분석")).toBeInTheDocument();
   });
 
   it("toggles the entity and bot test panels", async () => {
