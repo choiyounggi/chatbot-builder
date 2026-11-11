@@ -530,3 +530,16 @@ describe("리뷰 후 고친 것", () => {
     expect(await screen.findByText("그런 버전이 없어요. 목록을 새로 고쳐 주세요.")).toBeInTheDocument();
   });
 });
+
+describe("엔진 한도", () => {
+  it("입력칸이 엔진이 받는 길이까지만 받는다", async () => {
+    kbEngine();
+    renderKnowledge();
+    expect(await screen.findByLabelText("FAQ 1 질문")).toHaveAttribute("maxLength", "300");
+    expect(screen.getByLabelText("FAQ 1 답")).toHaveAttribute("maxLength", "2000");
+    await userEvent.click(screen.getByRole("button", { name: "문서" }));
+    await userEvent.click(await screen.findByText("안내문"));
+    expect(screen.getByLabelText("이름")).toHaveAttribute("maxLength", "200");
+    expect(screen.getByLabelText("본문")).toHaveAttribute("maxLength", "200000");
+  });
+});
