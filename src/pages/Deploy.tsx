@@ -1,6 +1,7 @@
 // 배포 menu: versions, training a deployable version, deploy, rollback, deploy history.
 // docs/builder-plan.md §6 B4.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { listKbVersions } from "../api/knowledge";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, getJob } from "../api/client";
 import {
@@ -142,6 +143,14 @@ export function Deploy() {
   const botId = draft.botId;
   const queryClient = useQueryClient();
   const versions = useQuery({ queryKey: ["versions", botId], queryFn: () => listVersions(botId) });
+  const kb = useQuery({ queryKey: ["kbVersions", botId], queryFn: () => listKbVersions(botId) });
+  const kbList = kb.data?.versions ?? [];
+  const kbNumber = (v: string | null | undefined) => (v ? kbList.find((k) => k.version === v)?.number : undefined);
+  const kbLabel = (v: string | null | undefined) => {
+    if (!v) return "없음";
+    const n = kbNumber(v);
+    return n !== undefined ? `v${n}` : "알 수 없는 버전";
+  };
 
   // kept in the query cache, not in the page: leaving 배포 and coming back keeps following the job
   const jobKey = ["versionJobId", botId];
@@ -176,12 +185,19 @@ export function Deploy() {
   const trained = typeof made === "string" && list.some((v) => v.version === made) ? made : "";
   const effectiveVersion = selectedVersion || trained || defaultVersion;
   const selectedLive = list.find((v) => v.version === effectiveVersion)?.live ?? false;
+  // the knowledge base to deploy with it: "" = none; null = not chosen yet (default: the newest built one)
+  const [selectedKb, setSelectedKb] = useState<string | null>(null);
+  const effectiveKb = selectedKb ?? kbList[0]?.version ?? "";
   const [deployedMessage, setDeployedMessage] = useState<string | null>(null);
   const deploy = useMutation({
-    mutationFn: () => deployVersion(botId, effectiveVersion, note),
-    onSuccess: () => {
+    // until the knowledge-base list loads, say nothing about it: the engine keeps the live one
+    mutationFn: () => deployVersion(botId, effectiveVersion, note, kb.isSuccess ? effectiveKb || null : undefined),
+    onSuccess: (live) => {
       const deployedNumber = list.find((v) => v.version === effectiveVersion)?.number;
-      setDeployedMessage(deployedNumber !== undefined ? `v${deployedNumber} 배포됨` : "배포됐어요");
+      const shipped = deployedNumber !== undefined ? `v${deployedNumber} 배포됨` : "배포됐어요";
+      setDeployedMessage(`${shipped} · 지식베이스 ${kbLabel(live.knowledge_version)}`);
+      setSelectedKb(null);
+      void queryClient.invalidateQueries({ queryKey: ["kbVersions", botId] });
       setRollbackMessage(null);
       setNote("");
       setSelectedVersion("");
@@ -190,14 +206,16 @@ export function Deploy() {
   });
 
   const history = versions.data?.history ?? [];
-  const canRollback = history.length > 1 && history.slice(1).some((h) => h.version !== history[0]?.version);
+  const pair = (h: { version: string; knowledge_version?: string | null }) => `${h.version}/${h.knowledge_version ?? ""}`;
+  const canRollback = history.length > 1 && history.slice(1).some((h) => pair(h) !== pair(history[0] as (typeof history)[number]));
   const [rollbackMessage, setRollbackMessage] = useState<string | null>(null);
   const rollback = useMutation({
     mutationFn: () => rollbackVersion(botId),
-    onSuccess: () => {
-      setRollbackMessage("이전 버전으로 되돌렸어요");
+    onSuccess: (live) => {
+      setRollbackMessage(`이전 버전으로 되돌렸어요 · 지식베이스 ${kbLabel(live.knowledge_version)}`);
       setDeployedMessage(null);
       void queryClient.invalidateQueries({ queryKey: ["versions", botId] });
+      void queryClient.invalidateQueries({ queryKey: ["kbVersions", botId] });
     },
   });
   const onRollbackClick = () => {
@@ -275,6 +293,23 @@ export function Deploy() {
               {selectedLive && <p className="help">이 버전은 지금 배포되어 있어요.</p>}
             </div>
             <div className="field">
+              <label htmlFor="deploy-kb">지식베이스</label>
+              <select id="deploy-kb" className="input" value={effectiveKb} disabled={!kb.isSuccess}
+                      onChange={(e) => setSelectedKb(e.target.value)}>
+                <option value="">없음</option>
+                {kbList.map((k) => (
+                  <option key={k.version} value={k.version}>
+                    v{k.number} · FAQ {k.faq}개 · 조각 {k.chunks}개{k.live ? " · 라이브" : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="help">
+                {kb.isError ? "지식베이스 목록을 불러오지 못했어요. 지금 배포된 지식베이스가 그대로 유지돼요."
+                  : kbList.length === 0 ? "색인을 만든 지식베이스가 없어요. 지식베이스 화면에서 만들 수 있어요."
+                  : `지금 라이브: ${kbLabel(kb.data?.live)}`}
+              </p>
+            </div>
+            <div className="field">
               <label htmlFor="deploy-note">메모 (선택)</label>
               <input id="deploy-note" className="input" maxLength={NOTE_MAX} value={note}
                      onChange={(e) => setNote(e.target.value)} aria-describedby="deploy-note-help" />
@@ -320,12 +355,13 @@ export function Deploy() {
         ) : (
           <table className="table stack-table">
             <thead>
-              <tr><th scope="col">버전</th><th scope="col">메모</th><th scope="col">배포 시각</th><th scope="col">상태</th></tr>
+              <tr><th scope="col">버전</th><th scope="col">지식베이스</th><th scope="col">메모</th><th scope="col">배포 시각</th><th scope="col">상태</th></tr>
             </thead>
             <tbody>
               {history.map((h, i) => (
                 <tr key={`${h.version}-${i}`}>
                   <td data-label="버전" className="mono">v{h.number}</td>
+                  <td data-label="지식베이스" className="mono">{kbLabel(h.knowledge_version)}</td>
                   <td data-label="메모">{h.note === "rollback" ? "되돌리기" : h.note || "메모 없음"}</td>
                   <td data-label="배포 시각">{formatDateTime(h.deployed_at)}</td>
                   <td data-label="상태">{h.version === versions.data?.live && <span className="chip" data-tone="live">라이브</span>}</td>

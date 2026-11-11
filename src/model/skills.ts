@@ -6,7 +6,7 @@ import { type BotDoc, newId, SKILL_TIMEOUT, type SkillDoc, without } from "./doc
 export const SKILL_ID_PATTERN = /^[a-z][a-z0-9_]*$/;
 export const HEADER_NAME_PATTERN = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/;
 export const SECRET_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
-export const BUILTIN_ACTIONS = ["get_weather", "get_temperature", "now"] as const;
+export const BUILTIN_ACTIONS = ["get_weather", "get_temperature", "now", "knowledge"] as const; // knowledge: the bot's 지식베이스 (engine E-D)
 
 /** Every `{{ secret.NAME }}` in a header value (the only template the engine allows there). */
 const SECRET_TEMPLATE = /\{\{\s*secret\.([A-Za-z_][A-Za-z0-9_]{0,63})\s*\}\}/g;
