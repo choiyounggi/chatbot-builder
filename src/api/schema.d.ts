@@ -154,6 +154,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/builder/bots/{bot}/knowledge/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Kb Draft */
+        get: operations["get_kb_draft_v1_builder_bots__bot__knowledge_draft_get"];
+        /**
+         * Put Kb Draft
+         * @description Like the bot draft: saved even when invalid; If-Match needed over an existing one (428/412).
+         */
+        put: operations["put_kb_draft_v1_builder_bots__bot__knowledge_draft_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/knowledge/extract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Extract
+         * @description The text of an uploaded file (PDF, plain text or Markdown), to put in the draft as a document.
+         */
+        post: operations["extract_v1_builder_bots__bot__knowledge_extract_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/knowledge/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Kb Search
+         * @description Search a built version as a conversation would (검색 테스트): candidates, scores, the answer.
+         */
+        post: operations["kb_search_v1_builder_bots__bot__knowledge_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/knowledge/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Kb Versions */
+        get: operations["kb_versions_v1_builder_bots__bot__knowledge_versions_get"];
+        put?: never;
+        /**
+         * Build Kb
+         * @description Index the knowledge-base draft as a version; follow it at /v1/builder/jobs/{id}.
+         */
+        post: operations["build_kb_v1_builder_bots__bot__knowledge_versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/knowledge/versions/{version}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Kb Entries
+         * @description The FAQ entries and document chunks of a built version, as searched (조각 미리보기).
+         */
+        get: operations["kb_entries_v1_builder_bots__bot__knowledge_versions__version__entries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/builder/bots/{bot}/misunderstood": {
         parameters: {
             query?: never;
@@ -678,6 +780,8 @@ export interface components {
         };
         /** DeployIn */
         DeployIn: {
+            /** Knowledge Version */
+            knowledge_version?: string | null;
             /**
              * Note
              * @default
@@ -690,6 +794,8 @@ export interface components {
         DeploymentOut: {
             /** Deployed At */
             deployed_at: string;
+            /** Knowledge Version */
+            knowledge_version?: string | null;
             /** Note */
             note: string;
             /** Number */
@@ -755,6 +861,20 @@ export interface components {
             /** Scenario */
             scenario?: string | null;
         };
+        /** ExtractOut */
+        ExtractOut: {
+            /** Text */
+            text: string;
+        };
+        /** FaqEntry */
+        FaqEntry: {
+            /** Answer */
+            answer: string;
+            /** Id */
+            id: string;
+            /** Question */
+            question: string;
+        };
         /** FrameOut */
         FrameOut: {
             /** Awaiting */
@@ -814,6 +934,156 @@ export interface components {
              */
             status: "queued" | "running" | "done" | "failed";
         };
+        /** KbAnswerOut */
+        KbAnswerOut: {
+            /** Items */
+            items: string[];
+            /** Replies */
+            replies: components["schemas"]["KbReplyOut"][];
+            /** Text */
+            text: string;
+        };
+        /** KbDocument */
+        KbDocument: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Text */
+            text: string;
+        };
+        /** KbEntriesOut */
+        KbEntriesOut: {
+            /** Bot */
+            bot: string;
+            /** Entries */
+            entries: components["schemas"]["KbEntryOut"][];
+            /** Version */
+            version: string;
+        };
+        /** KbEntryOut */
+        KbEntryOut: {
+            /** Body */
+            body: string;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "faq" | "doc";
+            /** Source */
+            source: string;
+            /** Title */
+            title: string;
+        };
+        /** KbHitOut */
+        KbHitOut: {
+            /** Cosine */
+            cosine: number;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "faq" | "doc";
+            /** Passed */
+            passed: boolean;
+            /** Score */
+            score: number;
+            /** Title */
+            title: string;
+        };
+        /** KbReplyOut */
+        KbReplyOut: {
+            /** Label */
+            label: string;
+            /** Message */
+            message: string;
+        };
+        /** KbSavedOut */
+        KbSavedOut: {
+            /** Bot */
+            bot: string;
+            /** Errors */
+            errors: string[];
+            /** Revision */
+            revision: number;
+            /** Valid */
+            valid: boolean;
+            /** Version */
+            version: string | null;
+        };
+        /** KbSearchIn */
+        KbSearchIn: {
+            /** Query */
+            query: string;
+            /** Version */
+            version?: string | null;
+        };
+        /** KbSearchOut */
+        KbSearchOut: {
+            answer: components["schemas"]["KbAnswerOut"] | null;
+            /** Bot */
+            bot: string;
+            /** Candidates */
+            candidates: components["schemas"]["KbHitOut"][];
+            /** Exact */
+            exact: boolean;
+            /** Judge */
+            judge: string;
+            /** Threshold */
+            threshold: number;
+            /** Version */
+            version: string;
+        };
+        /** KbSettings */
+        KbSettings: {
+            /**
+             * Mode
+             * @default instant
+             * @enum {string}
+             */
+            mode: "instant" | "suggest";
+            /**
+             * Suggest Text
+             * @default 이런 답을 찾았어요. 골라 주세요.
+             */
+            suggest_text: string;
+        };
+        /** KbVersionOut */
+        KbVersionOut: {
+            /** Chunks */
+            chunks: number;
+            /** Created At */
+            created_at: string;
+            /** Faq */
+            faq: number;
+            /** Live */
+            live: boolean;
+            /** Number */
+            number: number;
+            /** Version */
+            version: string;
+        };
+        /** KbVersionsOut */
+        KbVersionsOut: {
+            /** Bot */
+            bot: string;
+            /** Live */
+            live: string | null;
+            /** Versions */
+            versions: components["schemas"]["KbVersionOut"][];
+        };
+        /** KnowledgeBase */
+        KnowledgeBase: {
+            /** Documents */
+            documents?: components["schemas"]["KbDocument"][];
+            /** Faq */
+            faq?: components["schemas"]["FaqEntry"][];
+            settings?: components["schemas"]["KbSettings"];
+        };
         /** Link */
         Link: {
             /** Web */
@@ -846,6 +1116,8 @@ export interface components {
         LiveOut: {
             /** Bot */
             bot: string;
+            /** Knowledge Version */
+            knowledge_version?: string | null;
             /** Live */
             live: string;
         };
@@ -1672,6 +1944,254 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_kb_draft_v1_builder_bots__bot__knowledge_draft_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the knowledge-base draft as stored (may be invalid); ETag header */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBase"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_kb_draft_v1_builder_bots__bot__knowledge_draft_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "if-match"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeBase"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KbSavedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extract_v1_builder_bots__bot__knowledge_extract_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        /** @description the file itself (at most 10 MB) */
+        requestBody: {
+            content: {
+                "application/pdf": string;
+                "text/markdown": string;
+                "text/plain": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtractOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    kb_search_v1_builder_bots__bot__knowledge_search_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KbSearchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KbSearchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    kb_versions_v1_builder_bots__bot__knowledge_versions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KbVersionsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    build_kb_v1_builder_bots__bot__knowledge_versions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    kb_entries_v1_builder_bots__bot__knowledge_versions__version__entries_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KbEntriesOut"];
                 };
             };
             /** @description Validation Error */
