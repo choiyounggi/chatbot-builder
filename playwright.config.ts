@@ -6,6 +6,7 @@ import { defineConfig, devices } from "@playwright/test";
 const ENGINE_DIR = process.env.ENGINE_DIR ?? "engine";
 const ENGINE_PORT = 8765;
 const APP_PORT = 5179;
+const SKILL_PORT = 8799;
 const ARTIFACTS = resolve(".e2e/artifacts"); // here, not in the engine checkout
 
 export default defineConfig({
@@ -16,6 +17,14 @@ export default defineConfig({
   use: { baseURL: `http://127.0.0.1:${APP_PORT}`, trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
+    {
+      // a test skill server the engine calls (it runs with --skill-allow-private)
+      command: `node e2e/skill-server.mjs`,
+      url: `http://127.0.0.1:${SKILL_PORT}/healthz`,
+      timeout: 30_000,
+      reuseExistingServer: false,
+      env: { SKILL_PORT: String(SKILL_PORT) },
+    },
     {
       // a fresh in-memory repository and a scratch artifacts directory on every run
       command: `uv run --locked --directory ${ENGINE_DIR} python -m chatcore.api --bot bots/sample --embedder hashing --min-f1 0 --skill-allow-private `
