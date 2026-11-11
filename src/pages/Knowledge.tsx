@@ -13,8 +13,8 @@ import {
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useDraft } from "../draft/DraftContext";
 import {
-  addDocument, addFaq, duplicateFaqIds, emptyKb, faqWarning, firstLine, removeDocument, removeFaq, sameKb,
-  SUGGEST_TEXT_DEFAULT, writeDocument, writeFaq, writeSettings,
+  addDocument, addFaq, documentWarning, duplicateFaqIds, emptyKb, faqWarning, firstLine, kbProblem, LIMITS,
+  removeDocument, removeFaq, sameKb, SUGGEST_TEXT_DEFAULT, uploadReason, writeDocument, writeFaq, writeSettings,
 } from "../model/knowledge";
 
 type Tab = "faq" | "docs" | "search" | "versions";
@@ -62,6 +62,8 @@ export function Knowledge() {
     },
   });
   const doSave = () => { if (edit && !save.isPending) save.mutate(edit); };
+  // 412: saved elsewhere since we read it; 428: created elsewhere while we had none
+  const conflict = save.error instanceof ConflictError || (save.error instanceof ApiError && save.error.status === 428);
   const discard = () => { setEdit(null); save.reset(); };
   const reload = () => { setEdit(null); save.reset(); void query.refetch(); };
 
@@ -103,17 +105,17 @@ export function Knowledge() {
               {save.isPending ? "저장 중…" : "지식베이스 저장"}
             </button>
           </div>
-          {save.error instanceof ConflictError && (
+          {conflict && (
             <div className="notice" data-tone="warn" role="alert">
-              <p>다른 곳에서 지식베이스가 바뀌었어요. 다시 불러온 뒤 고쳐 주세요.</p>
+              <p>다른 곳에서 지식베이스가 바뀌었어요. 다시 불러온 뒤 고쳐 주세요. 다시 불러오면 저장하지 않은 변경은 사라져요.</p>
               <div className="actions"><button type="button" className="btn" onClick={reload}>다시 불러오기</button></div>
             </div>
           )}
-          {save.error != null && !(save.error instanceof ConflictError) && <ErrorNotice error={save.error} onRetry={doSave} />}
+          {save.error != null && !conflict && <ErrorNotice error={save.error} onRetry={doSave} />}
           {lastSave && !lastSave.valid && (
             <details className="notice" data-tone="warn" open>
               <summary>{`저장했지만 고칠 곳이 ${lastSave.errors.length}개 있어요`}</summary>
-              <ul>{lastSave.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+              <ul>{lastSave.errors.map((e, i) => <li key={i}>{kbProblem(e)}</li>)}</ul>
             </details>
           )}
         </div>
@@ -147,12 +149,12 @@ function FaqTab({ kb, onChange }: { kb: KnowledgeDoc; onChange: Change }) {
             <li key={f.id} className="queue-item">
               <div className="field">
                 <label htmlFor={`faq-${f.id}-q`}>{`FAQ ${n} 질문`}</label>
-                <input id={`faq-${f.id}-q`} className="input" value={f.question}
+                <input id={`faq-${f.id}-q`} className="input" value={f.question} maxLength={LIMITS.question}
                        onChange={(e) => onChange((d) => writeFaq(d, f.id, { question: e.target.value }))} />
               </div>
               <div className="field">
                 <label htmlFor={`faq-${f.id}-a`}>{`FAQ ${n} 답`}</label>
-                <textarea id={`faq-${f.id}-a`} className="input" value={f.answer}
+                <textarea id={`faq-${f.id}-a`} className="input" value={f.answer} maxLength={LIMITS.answer}
                           onChange={(e) => onChange((d) => writeFaq(d, f.id, { answer: e.target.value }))} />
               </div>
               {warning && <p className="help" data-tone="warn">{warning}</p>}
@@ -212,22 +214,34 @@ function DocsTab({ botId, kb, onChange, selectedId, onSelect }: {
       setUploadError("PDF, 텍스트(.txt), 마크다운(.md)만 올릴 수 있어요.");
       return;
     }
+    if (file.size > LIMITS.upload) {
+      setUploadError(uploadReason("over 10 MB"));
+      return;
+    }
     setUploading(true);
     try {
       const text = await extractFile(botId, file, type);
-      const { kb: next, id } = addDocument(kb, file.name, text);
-      onChange(() => next);
+      let id = "";
+      onChange((d) => { // the draft as it is now: edits made while the file was read stay
+        const added = addDocument(d, file.name.slice(0, LIMITS.name), text);
+        id = added.id;
+        return added.kb;
+      });
       onSelect(id);
     } catch (error) {
-      setUploadError(error instanceof ApiError ? (error.problems[0] ?? error.message) : "파일을 읽지 못했어요. 잠시 후 다시 시도해 주세요.");
+      setUploadError(error instanceof ApiError ? uploadReason(error.problems[0] ?? error.message) : "파일을 읽지 못했어요. 잠시 후 다시 시도해 주세요.");
     } finally {
       setUploading(false);
     }
   };
 
   const writeEmpty = () => {
-    const { kb: next, id } = addDocument(kb, "", "");
-    onChange(() => next);
+    let id = "";
+    onChange((d) => {
+      const added = addDocument(d, "", "");
+      id = added.id;
+      return added.kb;
+    });
     onSelect(id);
   };
 
@@ -237,8 +251,8 @@ function DocsTab({ botId, kb, onChange, selectedId, onSelect }: {
       <div className="split">
         <div className="blocklist">
           <div className="blocklist-tools">
-            <label className="visually-hidden" htmlFor="kb-file-input">파일 올리기</label>
             <input id="kb-file-input" ref={fileInput} type="file" accept=".pdf,.txt,.md,.markdown" className="visually-hidden"
+                   tabIndex={-1} aria-hidden="true" disabled={uploading}
                    onChange={(e) => {
                      const file = e.target.files?.[0];
                      e.target.value = "";
@@ -257,6 +271,7 @@ function DocsTab({ botId, kb, onChange, selectedId, onSelect }: {
                 <button type="button" className="skill-row" aria-current={d.id === selectedId ? "true" : undefined} onClick={() => onSelect(d.id)}>
                   <span className="name">{d.name || "(이름 없음)"}</span>
                   <span className="meta">{`${d.text.length.toLocaleString()}자 · ${firstLine(d.text) || "(내용 없음)"}`}</span>
+                  {documentWarning(d) && <span className="meta" data-tone="warn">{documentWarning(d)}</span>}
                 </button>
               </li>
             ))}
@@ -276,7 +291,7 @@ function DocumentEditor({ doc, onChange }: { doc: KbDocument; onChange: Change }
       <div className="editor-head">
         <div className="field">
           <label htmlFor="doc-name">이름</label>
-          <input id="doc-name" className="input" value={doc.name}
+          <input id="doc-name" className="input" value={doc.name} maxLength={LIMITS.name}
                  onChange={(e) => onChange((d) => writeDocument(d, doc.id, { name: e.target.value }))} />
         </div>
         <button type="button" className="btn btn--quiet"
@@ -286,9 +301,10 @@ function DocumentEditor({ doc, onChange }: { doc: KbDocument; onChange: Change }
       </div>
       <div className="field">
         <label htmlFor="doc-text">본문</label>
-        <textarea id="doc-text" className="input mono" value={doc.text}
+        <textarea id="doc-text" className="input mono" value={doc.text} maxLength={LIMITS.text}
                   onChange={(e) => onChange((d) => writeDocument(d, doc.id, { text: e.target.value }))} />
         <p className="help">{`${doc.text.length.toLocaleString()}자 · ## 로 시작하는 줄이 섹션 제목이 돼요.`}</p>
+        {documentWarning(doc) && <p className="help" data-tone="warn">{documentWarning(doc)}</p>}
       </div>
     </section>
   );
@@ -311,7 +327,8 @@ function SearchTab({ botId }: { botId: string }) {
       {list.length > 0 && (
         <div className="field">
           <label htmlFor="kb-search-version">버전</label>
-          <select id="kb-search-version" className="input" value={effectiveVersion} onChange={(e) => setSelectedVersion(e.target.value)}>
+          <select id="kb-search-version" className="input" value={effectiveVersion}
+                  onChange={(e) => { setSelectedVersion(e.target.value); search.reset(); }}>
             {list.map((v) => <option key={v.version} value={v.version}>{`v${v.number}${v.live ? " · 라이브" : ""}`}</option>)}
           </select>
         </div>
@@ -323,13 +340,21 @@ function SearchTab({ botId }: { botId: string }) {
         <button type="submit" className="btn btn--primary" disabled={!queryText.trim() || !effectiveVersion || search.isPending}>검색</button>
       </form>
       {search.isError && (
-        search.error instanceof ApiError && search.error.status === 409
-          ? <p className="notice" data-tone="error" role="alert">아직 색인이 없어요. 버전 탭에서 먼저 색인을 만들어 주세요.</p>
+        search.error instanceof ApiError && (search.error.status === 409 || search.error.status === 404)
+          ? <p className="notice" data-tone="error" role="alert">{searchRefusal(search.error)}</p>
           : <ErrorNotice error={search.error} onRetry={() => search.mutate()} />
       )}
       {search.data && <SearchResult result={search.data} />}
     </section>
   );
+}
+
+function searchRefusal(error: ApiError): string {
+  if (error.status === 404) return "그런 버전이 없어요. 목록을 새로 고쳐 주세요.";
+  if (/cannot be used here/.test(error.message) || error.problems.length > 0) {
+    return `이 버전은 지금 쓸 수 없어요. 색인을 다시 만들어 주세요.${error.problems.length ? ` (${error.problems.join(", ")})` : ""}`;
+  }
+  return "아직 색인이 없어요. 버전 탭에서 먼저 색인을 만들어 주세요.";
 }
 
 function SearchResult({ result }: { result: KbSearch }) {
@@ -419,7 +444,7 @@ function VersionsTab({ botId, dirty, hasSaved }: { botId: string; dirty: boolean
           : buildFail ? buildFail.message
           : "아직 색인을 만들지 않았어요"}
       </p>
-      {buildFail && buildFail.errors.length > 0 && <ul>{buildFail.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>}
+      {buildFail && buildFail.errors.length > 0 && <ul>{buildFail.errors.map((e, i) => <li key={i}>{kbProblem(e)}</li>)}</ul>}
       {build.isError && <ErrorNotice error={build.error} onRetry={() => build.mutate()} />}
       {job.isError && <ErrorNotice error={job.error} onRetry={() => void job.refetch()} />}
 

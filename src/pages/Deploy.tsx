@@ -31,6 +31,9 @@ export function deployRefusal(error: ApiError): string {
   if (/no earlier deployment/.test(error.message)) return "되돌릴 이전 배포가 없어요";
   if (/no trained model/.test(error.message)) return "그 버전의 모델 파일이 없어요. 다시 학습한 뒤 배포해 주세요.";
   if (/cannot run here/.test(error.message)) return `그 버전은 지금 엔진에서 돌릴 수 없어요: ${error.problems.join(", ") || error.message}`;
+  if (/knowledge base cannot be used here/.test(error.message)) {
+    return `그 지식베이스는 지금 쓸 수 없어요. 색인을 다시 만들어 주세요.${error.problems.length ? ` (${error.problems.join(", ")})` : ""}`;
+  }
   if (error.status === 404) return "그 버전을 찾지 못했어요. 버전 목록을 새로고쳐 주세요.";
   return error.message;
 }
@@ -185,17 +188,20 @@ export function Deploy() {
   const trained = typeof made === "string" && list.some((v) => v.version === made) ? made : "";
   const effectiveVersion = selectedVersion || trained || defaultVersion;
   const selectedLive = list.find((v) => v.version === effectiveVersion)?.live ?? false;
-  // the knowledge base to deploy with it: "" = none; null = not chosen yet (default: the newest built one)
+  // the knowledge base to deploy with it: "" = none; null = not chosen yet (default: the live one, so a
+  // routine bot deploy never ships a knowledge base nobody chose)
   const [selectedKb, setSelectedKb] = useState<string | null>(null);
-  const effectiveKb = selectedKb ?? kbList[0]?.version ?? "";
+  const liveKb = kb.data?.live ?? "";
+  const effectiveKb = selectedKb ?? liveKb;
+  const sendKb = kb.isSuccess ? effectiveKb || null : undefined; // undefined: the engine keeps the live one
   const [deployedMessage, setDeployedMessage] = useState<string | null>(null);
   const deploy = useMutation({
     // until the knowledge-base list loads, say nothing about it: the engine keeps the live one
-    mutationFn: () => deployVersion(botId, effectiveVersion, note, kb.isSuccess ? effectiveKb || null : undefined),
+    mutationFn: () => deployVersion(botId, effectiveVersion, note, sendKb),
     onSuccess: (live) => {
       const deployedNumber = list.find((v) => v.version === effectiveVersion)?.number;
       const shipped = deployedNumber !== undefined ? `v${deployedNumber} 배포됨` : "배포됐어요";
-      setDeployedMessage(`${shipped} · 지식베이스 ${kbLabel(live.knowledge_version)}`);
+      setDeployedMessage(`${shipped} · 지식베이스 ${sendKb === undefined ? "그대로" : kbLabel(live.knowledge_version)}`);
       setSelectedKb(null);
       void queryClient.invalidateQueries({ queryKey: ["kbVersions", botId] });
       setRollbackMessage(null);
@@ -294,8 +300,9 @@ export function Deploy() {
             </div>
             <div className="field">
               <label htmlFor="deploy-kb">지식베이스</label>
-              <select id="deploy-kb" className="input" value={effectiveKb} disabled={!kb.isSuccess}
+              <select id="deploy-kb" className="input" value={kb.isSuccess ? effectiveKb : "loading"} disabled={!kb.isSuccess}
                       onChange={(e) => setSelectedKb(e.target.value)}>
+                {!kb.isSuccess && <option value="loading">{kb.isError ? "지금 것 그대로" : "불러오는 중…"}</option>}
                 <option value="">없음</option>
                 {kbList.map((k) => (
                   <option key={k.version} value={k.version}>
@@ -308,6 +315,9 @@ export function Deploy() {
                   : kbList.length === 0 ? "색인을 만든 지식베이스가 없어요. 지식베이스 화면에서 만들 수 있어요."
                   : `지금 라이브: ${kbLabel(kb.data?.live)}`}
               </p>
+              {kb.isSuccess && effectiveKb !== liveKb && (
+                <p className="help" data-tone="warn">{`배포하면 지식베이스가 ${kbLabel(liveKb)}에서 ${kbLabel(effectiveKb)}(으)로 바뀌어요.`}</p>
+              )}
             </div>
             <div className="field">
               <label htmlFor="deploy-note">메모 (선택)</label>
@@ -364,7 +374,7 @@ export function Deploy() {
                   <td data-label="지식베이스" className="mono">{kbLabel(h.knowledge_version)}</td>
                   <td data-label="메모">{h.note === "rollback" ? "되돌리기" : h.note || "메모 없음"}</td>
                   <td data-label="배포 시각">{formatDateTime(h.deployed_at)}</td>
-                  <td data-label="상태">{h.version === versions.data?.live && <span className="chip" data-tone="live">라이브</span>}</td>
+                  <td data-label="상태">{i === 0 && h.version === versions.data?.live && <span className="chip" data-tone="live">라이브</span>}</td>
                 </tr>
               ))}
             </tbody>

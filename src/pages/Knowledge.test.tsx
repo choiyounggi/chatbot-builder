@@ -23,6 +23,8 @@ function renderKnowledge(shared?: ReturnType<typeof createQueryClient>) {
 }
 
 const B = "/v1/builder/bots/sample";
+/** The hidden file input behind "파일 올리기" (out of the tab order; the button opens it). */
+const fileInput = () => document.getElementById("kb-file-input") as HTMLInputElement;
 
 const DOC = {
   faq: [{ id: "faq_1", question: "영업 시간이 어떻게 되나요?", answer: "평일 9시부터 6시까지예요." }],
@@ -154,11 +156,12 @@ describe("저장", () => {
     const question = await screen.findByLabelText("FAQ 1 질문");
     await userEvent.type(question, "!");
     await userEvent.click(screen.getByRole("button", { name: "지식베이스 저장" }));
-    expect(await screen.findByText("다른 곳에서 지식베이스가 바뀌었어요. 다시 불러온 뒤 고쳐 주세요.")).toBeInTheDocument();
+    expect(await screen.findByText(/다른 곳에서 지식베이스가 바뀌었어요\. 다시 불러온 뒤 고쳐 주세요\. 다시 불러오면 저장하지 않은 변경은 사라져요\./)).toBeInTheDocument();
     expect(puts).toHaveLength(1);
     await userEvent.click(screen.getByRole("button", { name: "다시 불러오기" }));
     await waitFor(() => expect(reads).toBe(2));
     expect(screen.getByRole("button", { name: "지식베이스 저장" })).toBeDisabled();
+    expect(screen.getByLabelText("FAQ 1 질문")).toHaveValue("영업 시간이 어떻게 되나요?"); // the edit is gone, as warned
   });
 
   it("저장은 유효하지 않아도 되고, 엔진이 돌려준 오류 목록을 보여준다", async () => {
@@ -173,7 +176,7 @@ describe("저장", () => {
     await userEvent.type(question, "!");
     await userEvent.click(screen.getByRole("button", { name: "지식베이스 저장" }));
     expect(await screen.findByText("저장했지만 고칠 곳이 1개 있어요")).toBeInTheDocument();
-    expect(screen.getByText("faq.0.question: must not be blank")).toBeInTheDocument();
+    expect(screen.getByText("FAQ 1 질문: must not be blank")).toBeInTheDocument();
   });
 });
 
@@ -185,6 +188,7 @@ describe("FAQ", () => {
     await userEvent.click(screen.getByRole("button", { name: "FAQ 추가" }));
     expect(await screen.findByLabelText("FAQ 2 질문")).toBeInTheDocument();
     expect(screen.getByText("FAQ 2개")).toBeInTheDocument();
+    expect(document.getElementById("faq-faq_2-q")).not.toBeNull(); // faq_1 is taken: the new one is faq_2
   });
 
   it("행을 지우면 목록에서 사라진다", async () => {
@@ -226,7 +230,7 @@ describe("문서", () => {
     await userEvent.click(screen.getByRole("button", { name: "문서" }));
     await screen.findByText("안내문");
     const file = new File(["파일 속 글자"], "공지.txt", { type: "text/plain" });
-    await userEvent.upload(screen.getByLabelText("파일 올리기"), file);
+    await userEvent.upload(fileInput(), file);
     await waitFor(() => expect(uploads).toHaveLength(1));
     expect(uploads[0]).toEqual({ contentType: "text/plain", body: "파일 속 글자" });
     expect(await screen.findByText("공지.txt")).toBeInTheDocument();
@@ -239,7 +243,7 @@ describe("문서", () => {
     await userEvent.click(screen.getByRole("button", { name: "문서" }));
     await screen.findByText("안내문");
     const file = new File(["x"], "표.csv", { type: "text/csv" });
-    const input = screen.getByLabelText("파일 올리기") as HTMLInputElement;
+    const input = fileInput() as HTMLInputElement;
     // userEvent.upload refuses a file that does not match `accept` (realistic OS picker behaviour);
     // this checks the page's own guard, so the file is attached directly, as a bypassed picker would.
     Object.defineProperty(input, "files", { value: [file], configurable: true });
@@ -254,8 +258,8 @@ describe("문서", () => {
     await userEvent.click(screen.getByRole("button", { name: "문서" }));
     await screen.findByText("안내문");
     const file = new File(["%PDF-1.4"], "스캔본.pdf", { type: "application/pdf" });
-    await userEvent.upload(screen.getByLabelText("파일 올리기"), file);
-    expect(await screen.findByText("no text found in the file (a scanned PDF has none)")).toBeInTheDocument();
+    await userEvent.upload(fileInput(), file);
+    expect(await screen.findByText("글자를 찾지 못했어요. 스캔한 PDF는 글자가 없어서 쓸 수 없어요.")).toBeInTheDocument();
   });
 
   it("직접 쓰기로 문서를 만들고 이름·본문을 고칠 수 있다", async () => {
@@ -319,7 +323,7 @@ describe("색인 만들기", () => {
     await userEvent.click(screen.getByRole("button", { name: "버전" }));
     await userEvent.click(screen.getByRole("button", { name: "색인 만들기" }));
     expect(await screen.findByText("지식베이스에 고칠 곳이 있어 색인을 만들지 못했어요.")).toBeInTheDocument();
-    expect(screen.getByText("faq.0.question: must not be blank")).toBeInTheDocument();
+    expect(screen.getByText("FAQ 1 질문: must not be blank")).toBeInTheDocument();
   });
 });
 
@@ -436,5 +440,93 @@ describe("화면을 떠났다 와도", () => {
     await userEvent.click(screen.getByRole("button", { name: "FAQ" }));
     await userEvent.click(screen.getByRole("button", { name: "버전" }));
     expect(await screen.findByText("v1 색인 완료 · FAQ 1개 · 조각 2개")).toBeInTheDocument();
+  });
+});
+
+
+describe("리뷰 후 고친 것", () => {
+  it("파일을 읽는 동안 고친 내용은 남고, 그동안 파일 입력은 꺼진다", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    kbEngine({ extract: async () => { await gate; return { body: { text: "나중에 도착한 글이에요." } }; } });
+    renderKnowledge();
+    await userEvent.click(screen.getByRole("button", { name: "문서" }));
+    await screen.findByText("안내문");
+    await userEvent.upload(fileInput(), new File(["x"], "늦은.txt", { type: "text/plain" }));
+    expect(fileInput()).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "FAQ" }));
+    await userEvent.type(screen.getByLabelText("FAQ 1 질문"), " 주말은요?");
+    release();
+    await userEvent.click(screen.getByRole("button", { name: "문서" }));
+    expect(await screen.findByText("늦은.txt")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "FAQ" }));
+    expect(screen.getByLabelText("FAQ 1 질문")).toHaveValue("영업 시간이 어떻게 되나요? 주말은요?");
+  });
+
+  it("10MB가 넘는 파일은 엔진에 보내지 않고 안내한다", async () => {
+    const { uploads } = kbEngine();
+    renderKnowledge();
+    await userEvent.click(screen.getByRole("button", { name: "문서" }));
+    await screen.findByText("안내문");
+    const big = new File(["x"], "큰.pdf", { type: "application/pdf" });
+    Object.defineProperty(big, "size", { value: 10 * 1024 * 1024 + 1 });
+    await userEvent.upload(fileInput(), big);
+    expect(await screen.findByText("10MB가 넘는 파일은 올릴 수 없어요.")).toBeInTheDocument();
+    expect(uploads).toHaveLength(0);
+  });
+
+  it("직접 쓴 빈 문서에는 색인을 만들 수 없다고 알린다", async () => {
+    kbEngine();
+    renderKnowledge();
+    await userEvent.click(screen.getByRole("button", { name: "문서" }));
+    await screen.findByText("안내문");
+    await userEvent.click(screen.getByRole("button", { name: "직접 쓰기" }));
+    expect(await screen.findAllByText("이름이 비어 있으면 색인을 만들 수 없어요.")).toHaveLength(2); // list + editor
+    await userEvent.type(screen.getByLabelText("이름"), "새 문서");
+    expect(await screen.findAllByText("본문이 비어 있으면 색인을 만들 수 없어요.")).toHaveLength(2);
+  });
+
+  it("428(다른 곳에서 먼저 만듦)도 다시 불러오라고 안내한다", async () => {
+    kbEngine({
+      draft: () => ({ status: 404, body: { detail: "'sample' has no knowledge base" } }),
+      put: () => ({ status: 428, body: { detail: "send the knowledge base's ETag in If-Match" } }),
+    });
+    renderKnowledge();
+    await userEvent.click(await screen.findByRole("button", { name: "FAQ 추가" }));
+    await userEvent.type(screen.getByLabelText("FAQ 1 질문"), "질문");
+    await userEvent.click(screen.getByRole("button", { name: "지식베이스 저장" }));
+    expect(await screen.findByText(/다른 곳에서 지식베이스가 바뀌었어요/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "다시 불러오기" })).toBeInTheDocument();
+  });
+
+  it("변경 취소는 저장된 내용으로 되돌린다", async () => {
+    kbEngine();
+    renderKnowledge();
+    await userEvent.type(await screen.findByLabelText("FAQ 1 질문"), "!!");
+    await userEvent.click(screen.getByRole("button", { name: "지식베이스 변경 취소" }));
+    expect(screen.getByLabelText("FAQ 1 질문")).toHaveValue("영업 시간이 어떻게 되나요?");
+    expect(screen.getByText("지식베이스 변경 없음")).toBeInTheDocument();
+  });
+
+  it("검색 버전을 바꾸면 이전 결과를 지우고, 쓸 수 없는 버전·없는 버전을 구별해 알린다", async () => {
+    const V2 = { ...VERSION, version: "2b3c4d5e6f70", number: 2 };
+    let reply: { status?: number; body: unknown } = {
+      body: { bot: "sample", version: V2.version, judge: "cosine", threshold: 0.5, exact: false,
+              answer: { text: "평일 9시부터 6시까지예요.", replies: [], items: ["faq_1"] }, candidates: [] },
+    };
+    kbEngine({ versions: () => ({ body: { bot: "sample", live: null, versions: [V2, VERSION] } }), search: () => reply });
+    renderKnowledge();
+    await userEvent.click(screen.getByRole("button", { name: "검색 테스트" }));
+    await userEvent.type(await screen.findByLabelText("검색어"), "영업 시간");
+    await userEvent.click(screen.getByRole("button", { name: "검색" }));
+    expect(await screen.findByText("평일 9시부터 6시까지예요.")).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("버전"), VERSION.version);
+    expect(screen.queryByText("평일 9시부터 6시까지예요.")).toBeNull();
+    reply = { status: 409, body: { detail: { detail: "the knowledge base cannot be used here", errors: ["hashes to x"] } } };
+    await userEvent.click(screen.getByRole("button", { name: "검색" }));
+    expect(await screen.findByText("이 버전은 지금 쓸 수 없어요. 색인을 다시 만들어 주세요. (hashes to x)")).toBeInTheDocument();
+    reply = { status: 404, body: { detail: "unknown knowledge-base version: x" } };
+    await userEvent.click(screen.getByRole("button", { name: "검색" }));
+    expect(await screen.findByText("그런 버전이 없어요. 목록을 새로 고쳐 주세요.")).toBeInTheDocument();
   });
 });

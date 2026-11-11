@@ -195,7 +195,9 @@ test("a document uploaded in the builder, indexed and deployed with the bot, ans
   await menu.getByRole("link", { name: "배포" }).click();
   await page.getByRole("button", { name: "배포용 학습" }).click();
   await expect(page.getByText(/학습을 마쳤어요 · macro-F1/)).toBeVisible({ timeout: 60_000 });
-  await expect(page.locator("#deploy-kb")).not.toHaveValue(""); // the newest index by default
+  await expect(page.locator("#deploy-kb")).toHaveValue(""); // the live one by default: none yet
+  await page.locator("#deploy-kb").selectOption({ index: 1 }); // the newest index ("없음" comes first)
+  await expect(page.getByText(/^배포하면 지식베이스가 없음에서 v\d+\(으\)로 바뀌어요\.$/)).toBeVisible();
   await page.getByRole("button", { name: "배포", exact: true }).click();
   await expect(page.getByText(/^v\d+ 배포됨 · 지식베이스 v\d+$/)).toBeVisible();
 

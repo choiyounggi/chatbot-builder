@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { KnowledgeDoc } from "../api/knowledge";
 import {
   addDocument, addFaq, duplicateFaqIds, emptyKb, faqWarning, firstLine, removeDocument, removeFaq, sameKb,
-  writeDocument, writeFaq, writeSettings,
+  documentWarning, kbProblem, uploadReason, writeDocument, writeFaq, writeSettings,
 } from "./knowledge";
 
 const base = (): KnowledgeDoc => ({
@@ -114,5 +114,28 @@ describe("응답 방식", () => {
   it("안내 문구만 바꿀 수 있다", () => {
     const kb = writeSettings(base(), { suggest_text: "골라 주세요" });
     expect(kb.settings).toEqual({ mode: "instant", suggest_text: "골라 주세요" });
+  });
+});
+
+describe("review fixes: messages and limits", () => {
+  it("names save problems as on screen and keeps unknown ones", () => {
+    expect(kbProblem("faq.0.question: String should have at most 300 characters")).toBe("FAQ 1 질문: String should have at most 300 characters");
+    expect(kbProblem("documents.2.text: Field required")).toBe("문서 3 본문: Field required");
+    expect(kbProblem("settings.suggest_text: too long")).toBe("안내 문구: too long");
+    expect(kbProblem("settings.mode: bad")).toBe("응답 방식: bad");
+    expect(kbProblem("(top): duplicate FAQ ids: ['a']")).toBe("(top): duplicate FAQ ids: ['a']");
+  });
+
+  it("says the engine's upload reasons in Korean and keeps unknown ones", () => {
+    expect(uploadReason("the file is not UTF-8 text")).toMatch(/UTF-8 글이 아니에요/);
+    expect(uploadReason("the PDF is encrypted")).toBe("암호가 걸린 PDF는 읽을 수 없어요.");
+    expect(uploadReason("the file is over 10 MB")).toBe("10MB가 넘는 파일은 올릴 수 없어요.");
+    expect(uploadReason("something new")).toBe("something new");
+  });
+
+  it("warns about an empty name before an empty text, and not for a usable document", () => {
+    expect(documentWarning({ id: "d", name: " ", text: "" })).toMatch(/이름/);
+    expect(documentWarning({ id: "d", name: "a", text: " " })).toMatch(/본문/);
+    expect(documentWarning({ id: "d", name: "a", text: "b" })).toBeNull();
   });
 });
