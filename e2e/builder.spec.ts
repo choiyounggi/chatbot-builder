@@ -149,3 +149,58 @@ test("a skill made in the builder is tested, connected to a block, and answers i
   await panel.getByRole("button", { name: "보내기" }).click();
   await expect(panel.getByRole("list", { name: "테스트 대화" }).getByText("주문 A-3은 배송 중이에요.")).toBeVisible();
 });
+
+test("a document uploaded in the builder, indexed and deployed with the bot, answers a question no block has", async ({ page, request }) => {
+  const engineUrl = "http://127.0.0.1:8765";
+  const question = "우산은 어디서 빌릴 수 있나요";
+  const ask = async (session: string) => {
+    const r = await request.post(`${engineUrl}/v1/bots/sample/sessions/${session}/messages`, { data: { text: question } });
+    expect(r.ok()).toBe(true);
+    return ((await r.json()) as { messages: { response: string; text: string }[] }).messages;
+  };
+  expect((await ask("e2e-kb-1")).map((m) => m.response)).toEqual(["fallback"]); // no block has it
+
+  // deploy training needs 5 examples per block (earlier tests may leave a one-example block)
+  const draftUrl = `${engineUrl}/v1/builder/bots/sample/draft`;
+  const current = await request.get(draftUrl);
+  const doc = (await current.json()) as { intents: Record<string, { examples: string[] }> };
+  for (const [id, intent] of Object.entries(doc.intents)) {
+    for (let n = 1; intent.examples.length < 5; n++) intent.examples.push(`${id} 예문 ${n}번째로 추가한 문장`);
+  }
+  expect((await request.put(draftUrl, { data: doc, headers: { "If-Match": current.headers().etag ?? "" } })).ok()).toBe(true);
+
+  await page.goto("/");
+  await page.getByRole("link", { name: "샘플 봇" }).click();
+  const menu = page.getByRole("navigation", { name: "봇 메뉴" });
+  await menu.getByRole("link", { name: "지식베이스" }).click();
+  await page.getByRole("button", { name: "문서", exact: true }).click();
+  await page.locator("#kb-file-input").setInputFiles({
+    name: "center.md", mimeType: "text/markdown",
+    buffer: Buffer.from("# 센터 이용 안내\n\n## 우산 대여\n\n우산은 정문 안내 데스크에서 하루 동안 무료로 빌릴 수 있습니다. "
+      + "돌려줄 때는 같은 데스크에 맡기면 됩니다.\n\n## 주차\n\n주차장은 지하 2층에 있고 두 시간까지 무료입니다.\n"),
+  });
+  await expect(page.locator("#doc-text")).toHaveValue(/정문 안내 데스크/);
+  await page.getByRole("button", { name: "지식베이스 저장" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "지식베이스를 저장했어요" })).toBeVisible();
+
+  await page.getByRole("button", { name: "버전", exact: true }).click();
+  await page.getByRole("button", { name: "색인 만들기" }).click();
+  await expect(page.getByText(/^v\d+ 색인 완료 · FAQ 0개 · 조각 2개$/)).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: "검색 테스트" }).click();
+  await page.locator("#kb-search-query").fill(question);
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByText(/정문 안내 데스크에서 하루 동안/).first()).toBeVisible();
+
+  await menu.getByRole("link", { name: "배포" }).click();
+  await page.getByRole("button", { name: "배포용 학습" }).click();
+  await expect(page.getByText(/학습을 마쳤어요 · macro-F1/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator("#deploy-kb")).not.toHaveValue(""); // the newest index by default
+  await page.getByRole("button", { name: "배포", exact: true }).click();
+  await expect(page.getByText(/^v\d+ 배포됨 · 지식베이스 v\d+$/)).toBeVisible();
+
+  const [answer] = await ask("e2e-kb-2");
+  expect(answer?.response).toBe("knowledge");
+  expect(answer?.text).toContain("우산은 정문 안내 데스크에서 하루 동안 무료로 빌릴 수 있습니다.");
+  expect(answer?.text).toContain("출처: center.md");
+});
