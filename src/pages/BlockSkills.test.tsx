@@ -108,4 +108,45 @@ describe("review fixes", () => {
     const options = [...(within(e).getByLabelText("스킬 1", { exact: true }) as HTMLSelectElement).options].map((o) => o.textContent);
     expect(options).toEqual(["주문 조회", "check_city", "get_weather (내장 액션)", "get_temperature (내장 액션)", "now (내장 액션)"]);
   });
+
+  it("lets a bot without skills add a built-in action", async () => {
+    botEngine();
+    renderAt("/bots/sample/scenarios/greet");
+    const e = await editor();
+    await userEvent.click(within(e).getByRole("button", { name: "스킬 추가" }));
+    expect(within(e).getByLabelText("스킬 1", { exact: true })).toHaveValue("get_weather");
+  });
+
+  it("names an action that is neither a skill nor built in as missing", async () => {
+    const doc = withSkills() as unknown as BotDoc;
+    (doc.scenarios.check_weather?.steps[1] as { action: string }).action = "gone_skill";
+    botEngine({ doc: doc as unknown as Record<string, unknown> });
+    renderAt("/bots/sample/scenarios/check_weather");
+    const e = await editor();
+    expect(within(e).getByLabelText("스킬 1", { exact: true })).toHaveDisplayValue("gone_skill (없는 스킬)");
+  });
+
+  it("saves the earlier row while a later row repeats its name", async () => {
+    const { state } = botEngine({ doc: withSkills() });
+    renderAt("/bots/sample/scenarios/check_weather");
+    const e = await editor();
+    await userEvent.click(within(e).getByRole("button", { name: "인자 추가" }));
+    const second = within(e).getByLabelText("스킬 1 인자 2 이름");
+    await userEvent.clear(second);
+    await userEvent.type(second, "location");
+    await userEvent.type(within(e).getByLabelText("스킬 1 인자 2 값"), "later");
+    await userEvent.type(within(e).getByLabelText("스킬 1 인자 1 값"), "!");
+    const doc = await saveNow(state);
+    expect(doc.scenarios.check_weather?.steps[1]).toEqual({ action: "get_weather", args: { location: "{{ slots.location }}!" } });
+  });
+
+  it("shows the draft's arguments again after 변경 취소", async () => {
+    botEngine({ doc: withSkills() });
+    renderAt("/bots/sample/scenarios/check_weather");
+    const e = await editor();
+    await userEvent.type(within(e).getByLabelText("스킬 1 인자 1 값"), "!");
+    expect(within(e).getByLabelText("스킬 1 인자 1 값")).toHaveValue("{{ slots.location }}!");
+    await userEvent.click(screen.getByRole("button", { name: "변경 취소" }));
+    expect(within(e).getByLabelText("스킬 1 인자 1 값")).toHaveValue("{{ slots.location }}");
+  });
 });
