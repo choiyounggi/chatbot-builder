@@ -76,6 +76,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bots/{bot}/web": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Web Public
+         * @description How the chat widget looks for this bot (never which sites are allowed).
+         */
+        get: operations["web_public_v1_bots__bot__web_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/builder/bots": {
         parameters: {
             query?: never;
@@ -610,6 +630,30 @@ export interface paths {
          * @description Start training the draft as a deployable version; follow it at /v1/builder/jobs/{id}.
          */
         post: operations["train_version_v1_builder_bots__bot__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/web": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Web Settings
+         * @description The bot's web chat settings: allowed sites and the widget's look (defaults until saved).
+         */
+        get: operations["web_settings_v1_builder_bots__bot__web_get"];
+        /**
+         * Save Web Settings
+         * @description Replace the web chat settings; they apply at once (no deploy).
+         */
+        put: operations["save_web_settings_v1_builder_bots__bot__web_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1897,6 +1941,56 @@ export interface components {
             /** Versions */
             versions: components["schemas"]["VersionOut"][];
         };
+        /** WebOut */
+        WebOut: {
+            /** Allowed Origins */
+            allowed_origins?: string[];
+            /** Bot */
+            bot: string;
+            /**
+             * Color
+             * @default #2563EB
+             */
+            color: string;
+            /**
+             * Placeholder
+             * @default 메시지를 입력하세요
+             */
+            placeholder: string;
+            /** Title */
+            title?: string | null;
+        };
+        /** WebPublicOut */
+        WebPublicOut: {
+            /** Bot */
+            bot: string;
+            /** Color */
+            color: string;
+            /** Placeholder */
+            placeholder: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * WebSettings
+         * @description What the builder edits. `title` None: the bot's label.
+         */
+        WebSettings: {
+            /** Allowed Origins */
+            allowed_origins?: string[];
+            /**
+             * Color
+             * @default #2563EB
+             */
+            color: string;
+            /**
+             * Placeholder
+             * @default 메시지를 입력하세요
+             */
+            placeholder: string;
+            /** Title */
+            title?: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -2020,6 +2114,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TurnOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    web_public_v1_bots__bot__web_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebPublicOut"];
                 };
             };
             /** @description Validation Error */
@@ -3181,6 +3306,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    web_settings_v1_builder_bots__bot__web_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_web_settings_v1_builder_bots__bot__web_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebSettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebOut"];
                 };
             };
             /** @description Validation Error */

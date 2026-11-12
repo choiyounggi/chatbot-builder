@@ -18,6 +18,7 @@ export const SECTIONS = [
   { path: "deploy", label: "배포" },
   { path: "history", label: "작업이력" },
   { path: "ml", label: "머신러닝" },
+  { path: "web", label: "웹 채팅" },
   { path: "settings", label: "설정" },
 ] as const;
 

@@ -7,6 +7,7 @@ import { Analytics } from "./pages/Analytics";
 import { BotLayout } from "./pages/BotLayout";
 import { BotList } from "./pages/BotList";
 import { BotSettings } from "./pages/BotSettings";
+import { WebChat } from "./pages/WebChat";
 import { Deploy } from "./pages/Deploy";
 import { Edits } from "./pages/Edits";
 import { MachineLearning } from "./pages/MachineLearning";
@@ -42,6 +43,7 @@ export function AppRoutes() {
         <Route path="skills" element={<Skills />} />
         <Route path="knowledge" element={<Knowledge />} />
         <Route path="analytics" element={<Analytics />} />
+        <Route path="web" element={<WebChat />} />
         <Route path="settings" element={<BotSettings />} />
       </Route>
       <Route path="*" element={<NotFound />} />
