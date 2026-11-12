@@ -6,11 +6,12 @@ import "../styles/knowledge.css";
 import { ApiError, ConflictError, getJob } from "../api/client";
 import { formatDateTime } from "../api/deploy";
 import {
-  extractFile, fileType, getKbDraft, kbBuildError, kbEntries, type KbDocument, type KbDraft, type KbEntry,
+  extractFile, type FaqEntry, fileType, getKbDraft, kbBuildError, kbEntries, type KbDocument, type KbDraft, type KbEntry,
   type KbSaved, type KbSearch, type KnowledgeDoc, listKbVersions, parseKbBuildResult, saveKbDraft, searchKb,
   startKbBuild, GENERATION_OUTCOME, llmStatus,
 } from "../api/knowledge";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { Proposals } from "../components/Proposals";
 import { useDraft } from "../draft/DraftContext";
 import {
   addDocument, addFaq, documentWarning, duplicateFaqIds, emptyKb, faqWarning, firstLine, kbProblem, LIMITS,
@@ -121,7 +122,8 @@ export function Knowledge() {
         </div>
       )}
 
-      {doc && tab === "faq" && <FaqTab kb={doc} onChange={update} />}
+      {doc && tab === "faq" && <FaqTab botId={botId} kb={doc} onChange={update}
+                                       blocked={dirty || !hasSaved ? "저장하지 않은 바뀐 내용이 있어요. 저장하면 저장된 FAQ로 만들어요." : null} />}
       {doc && tab === "docs" && (
         <DocsTab botId={botId} kb={doc} onChange={update} selectedId={selectedDocId} onSelect={setSelectedDocId} />
       )}
@@ -133,7 +135,43 @@ export function Knowledge() {
 
 // ---------------------------------------------------------------- FAQ
 
-function FaqTab({ kb, onChange }: { kb: KnowledgeDoc; onChange: Change }) {
+/** 비슷한 질문: other ways to ask an FAQ question (typos, casual wording, synonyms), found like the question. */
+function SimilarQuestions({ botId, faq, n, blocked, onChange }: {
+  botId: string; faq: FaqEntry; n: number; blocked: string | null; onChange: Change;
+}) {
+  const similar = faq.similar ?? [];
+  const [text, setText] = useState("");
+  const set = (next: string[]) => onChange((d) => writeFaq(d, faq.id, { similar: next }));
+  const fresh = (t: string) => t.trim() && t.trim() !== faq.question.trim() && !similar.includes(t.trim());
+  const add = (texts: string[]) => set([...similar, ...texts.map((t) => t.trim()).filter((t, i, all) => fresh(t) && all.indexOf(t) === i)]
+    .slice(0, LIMITS.similar));
+  const full = similar.length >= LIMITS.similar;
+  return (
+    <details className="similar">
+      <summary>{`비슷한 질문 ${similar.length}개`}</summary>
+      <p className="help">오타·구어체·다른 표현으로 물어도 이 FAQ를 찾아요(최대 {LIMITS.similar}개).</p>
+      <ul className="examples" aria-label={`FAQ ${n} 비슷한 질문`}>
+        {similar.map((q, i) => (
+          <li key={i}>
+            <span>{q}</span>
+            <button type="button" className="btn btn--quiet" aria-label={`비슷한 질문 "${q}" 삭제`}
+                    onClick={() => set(similar.filter((_, j) => j !== i))}>삭제</button>
+          </li>
+        ))}
+      </ul>
+      <form className="inline-add" onSubmit={(e) => { e.preventDefault(); if (fresh(text)) add([text]); setText(""); }}>
+        <label className="visually-hidden" htmlFor={`faq-${faq.id}-similar`}>{`FAQ ${n} 비슷한 질문 추가`}</label>
+        <input id={`faq-${faq.id}-similar`} className="input" value={text} maxLength={LIMITS.question} disabled={full}
+               onChange={(e) => setText(e.target.value)} placeholder="비슷한 질문을 입력하고 Enter" />
+        <button type="submit" className="btn" disabled={full || !fresh(text)}>추가</button>
+      </form>
+      {full ? <p className="help" data-tone="warn">비슷한 질문은 {LIMITS.similar}개까지예요.</p>
+        : <Proposals botId={botId} kind="faq" target={faq.id} what="비슷한 질문" blocked={blocked} onAdd={add} />}
+    </details>
+  );
+}
+
+function FaqTab({ botId, kb, onChange, blocked }: { botId: string; kb: KnowledgeDoc; onChange: Change; blocked: string | null }) {
   const faqs = kb.faq ?? [];
   const duplicates = duplicateFaqIds(kb);
   return (
@@ -157,6 +195,7 @@ function FaqTab({ kb, onChange }: { kb: KnowledgeDoc; onChange: Change }) {
                 <textarea id={`faq-${f.id}-a`} className="input" value={f.answer} maxLength={LIMITS.answer}
                           onChange={(e) => onChange((d) => writeFaq(d, f.id, { answer: e.target.value }))} />
               </div>
+              <SimilarQuestions botId={botId} faq={f} n={n} blocked={blocked} onChange={onChange} />
               {warning && <p className="help" data-tone="warn">{warning}</p>}
               <div className="form-actions">
                 <button type="button" className="btn btn--quiet" onClick={() => onChange((d) => removeFaq(d, f.id))}>삭제</button>

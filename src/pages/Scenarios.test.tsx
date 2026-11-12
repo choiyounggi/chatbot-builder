@@ -146,3 +146,36 @@ describe("examples", () => {
     expect(state.puts).toHaveLength(0);
   });
 });
+
+describe("LLM으로 발화 더 만들기 (B10)", () => {
+  const proposals = { bot: "sample", kind: "intent", id: "greeting", model: "m", ms: 1200, items: [
+    { text: "안녕하세여", type: "typo", status: "ok", detail: "" },
+    { text: "하이", type: "casual", status: "ok", detail: "" },
+  ] };
+
+  it("adds the checked sentences to the block's examples, then they are saved with the draft", async () => {
+    const asked: unknown[] = [];
+    const { state } = botEngine({ extra: { "POST /v1/builder/bots/sample/augment": (init) => {
+      asked.push(JSON.parse(String(init.body)));
+      return { body: proposals };
+    } } });
+    renderAt("/bots/sample/scenarios/greet");
+    const editor = await screen.findByRole("region", { name: /^블록 (?!목록)/ });
+    await userEvent.click(within(editor).getByRole("button", { name: "LLM으로 발화 더 만들기" }));
+    expect(asked).toEqual([{ kind: "intent", id: "greeting", count: 20 }]);
+    await userEvent.click(await within(editor).findByRole("button", { name: "선택한 2개 추가" }));
+    expect(within(editor).getByText("안녕하세여")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(saved(state)?.intents?.greeting?.examples.slice(-2)).toEqual(["안녕하세여", "하이"]));
+  });
+
+  it("waits for the draft to be saved first, since the engine works from what is saved", async () => {
+    botEngine();
+    renderAt("/bots/sample/scenarios/greet");
+    const editor = await screen.findByRole("region", { name: /^블록 (?!목록)/ });
+    expect(within(editor).getByRole("button", { name: "LLM으로 발화 더 만들기" })).toBeEnabled();
+    await userEvent.type(within(editor).getByLabelText("새 발화"), "새 문장{Enter}");
+    expect(within(editor).getByRole("button", { name: "LLM으로 발화 더 만들기" })).toBeDisabled();
+    expect(within(editor).getByText(/저장하지 않은 바뀐 내용이 있어요/)).toBeInTheDocument();
+  });
+});

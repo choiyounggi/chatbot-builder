@@ -161,6 +161,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/builder/bots/{bot}/augment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Augment Proposals
+         * @description Sentences the LLM proposes for a block's examples or an FAQ's similar questions, screened by
+         *     the engine (duplicate / invalid / conflict / ok). Nothing is saved: the builder adds what a
+         *     person keeps (docs/engine-core-plan.md "빌더 단계 E-H").
+         */
+        post: operations["augment_proposals_v1_builder_bots__bot__augment_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/builder/bots/{bot}/deploy": {
         parameters: {
             query?: never;
@@ -844,6 +866,36 @@ export interface components {
             /** Users */
             users: number;
         };
+        /** AugmentIn */
+        AugmentIn: {
+            /**
+             * Count
+             * @default 20
+             */
+            count: number;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "intent" | "faq";
+        };
+        /** AugmentOut */
+        AugmentOut: {
+            /** Bot */
+            bot: string;
+            /** Id */
+            id: string;
+            /** Items */
+            items: components["schemas"]["ProposalOut"][];
+            /** Kind */
+            kind: string;
+            /** Model */
+            model: string;
+            /** Ms */
+            ms: number;
+        };
         /** BasicCard */
         BasicCard: {
             /** Buttons */
@@ -1135,6 +1187,8 @@ export interface components {
             id: string;
             /** Question */
             question: string;
+            /** Similar */
+            similar?: string[];
         };
         /** FrameOut */
         FrameOut: {
@@ -1516,6 +1570,23 @@ export interface components {
             similarity: number;
             /** Text */
             text: string;
+        };
+        /** ProposalOut */
+        ProposalOut: {
+            /** Detail */
+            detail: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "duplicate" | "invalid" | "conflict";
+            /** Text */
+            text: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "typo" | "casual" | "paraphrase" | "synonym";
         };
         /**
          * QuickReply
@@ -2280,6 +2351,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyticsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    augment_proposals_v1_builder_bots__bot__augment_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AugmentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AugmentOut"];
                 };
             };
             /** @description Validation Error */

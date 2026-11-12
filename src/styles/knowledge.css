@@ -1,3 +1,7 @@
 /* 지식베이스 — tokens only (src/styles/tokens.css). */
 
 textarea#doc-text.input { min-height: 16rem; }
+
+.similar { margin-top: var(--space-xs); }
+.similar > summary { cursor: pointer; font-weight: 600; }
+.similar[open] { display: grid; gap: var(--space-xs); }

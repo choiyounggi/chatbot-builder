@@ -358,3 +358,26 @@ test("웹 채팅: sites allowed in the builder can talk to the bot from a browse
     { data: { text: "안녕" }, headers: { Origin: "https://evil.example" } });
   expect(refused.status()).toBe(403);
 });
+
+test("LLM으로 발화 더 만들기: proposals screened by the engine are added to a block and saved", async ({ page, request }) => {
+  const engineUrl = "http://127.0.0.1:8765";
+  await page.goto("/");
+  await page.getByRole("link", { name: "샘플 봇" }).click();
+  await page.getByRole("navigation", { name: "봇 메뉴" }).getByRole("link", { name: "시나리오" }).click();
+  await page.getByRole("link", { name: /도움말/ }).first().click();
+  const editor = page.getByRole("region", { name: /^블록 (?!목록)/ });
+  await editor.getByLabel("개수").selectOption("10");
+  await editor.getByRole("button", { name: "LLM으로 발화 더 만들기" }).click();
+  const list = editor.getByRole("list", { name: "LLM이 만든 발화" });
+  await expect(list).toBeVisible({ timeout: 30_000 });
+  await expect(list.getByText(/이미 있어요/)).toBeVisible(); // the typo task repeated an example: not offered
+  const offered = await list.locator("li[data-status='ok'] .proposals__text").allTextContents();
+  expect(offered.length).toBeGreaterThan(0);
+  await editor.getByRole("button", { name: /^선택한 \d+개 추가$/ }).click();
+  await page.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(page.getByText(/^저장했어요 · 리비전 \d+$/)).toBeVisible();
+  const draft = (await (await request.get(`${engineUrl}/v1/builder/bots/sample/draft`)).json()) as {
+    intents: Record<string, { examples: string[] }>;
+  };
+  for (const text of offered) expect(draft.intents.help?.examples).toContain(text);
+});

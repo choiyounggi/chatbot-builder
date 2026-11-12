@@ -96,7 +96,7 @@ export function firstLine(text: string): string {
 }
 
 /** The engine's limits (chatcore/knowledge.py), so inputs stop where the engine would refuse. */
-export const LIMITS = { question: 300, answer: 2000, name: 200, text: 200_000, upload: 10 * 1024 * 1024 } as const;
+export const LIMITS = { question: 300, answer: 2000, name: 200, text: 200_000, upload: 10 * 1024 * 1024, similar: 50 } as const;
 
 /** A document the engine cannot index as it is ("" name or text), or null. */
 export function documentWarning(d: KbDocument): string | null {
