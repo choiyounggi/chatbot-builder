@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { KnowledgeDoc } from "../api/knowledge";
 import {
   addDocument, addFaq, duplicateFaqIds, emptyKb, faqWarning, firstLine, removeDocument, removeFaq, sameKb,
-  documentWarning, kbProblem, uploadReason, writeDocument, writeFaq, writeSettings,
+  bare, documentWarning, kbProblem, uploadReason, withSimilar, writeDocument, writeFaq, writeSettings, writeSimilar,
 } from "./knowledge";
 
 const base = (): KnowledgeDoc => ({
@@ -153,5 +153,31 @@ describe("writeSettings: generate (E-F)", () => {
   it("keeps the other settings, and starts from the engine's defaults without settings", () => {
     const on = writeSettings({ ...base(), settings: undefined }, { generate: true });
     expect(on.settings).toEqual({ mode: "instant", suggest_text: "이런 답을 찾았어요. 골라 주세요.", generate: true });
+  });
+});
+
+describe("similar questions (B10)", () => {
+  const faq = { id: "faq_1", question: "환불 가능한가요?", answer: "네" };
+
+  it("are the same as the engine says: NFKC, spaces collapsed, punctuation at the ends dropped, case kept", () => {
+    expect(bare("  환불  가능한가요?! ")).toBe("환불 가능한가요");
+    expect(bare("ＡＢＣ")).toBe("ABC");
+    expect(bare("Refund")).not.toBe(bare("refund"));
+    expect(bare("")).toBe("");
+  });
+
+  it("are added without blanks, repeats of the question or each other, or past fifty", () => {
+    expect(withSimilar(faq, ["환불 가능한가요", "환불?", "환불!", "  ", "반품 돼요"])).toEqual(
+      { similar: ["환불?", "반품 돼요"], added: 2, skipped: 3 });
+    const full = { ...faq, similar: Array.from({ length: 50 }, (_, i) => `q${i}`) };
+    expect(withSimilar(full, ["새 질문"])).toEqual({ similar: full.similar, added: 0, skipped: 1 });
+  });
+
+  it("none left removes the key, and a repeat after editing the question is warned about", () => {
+    const kb = { ...emptyKb(), faq: [{ ...faq, similar: ["환불?"] }] };
+    expect(writeSimilar(kb, "faq_1", []).faq?.[0]).toEqual(faq);
+    expect(writeSimilar(kb, "faq_1", ["a"]).faq?.[0]?.similar).toEqual(["a"]);
+    expect(faqWarning({ ...faq, question: "환불?", similar: ["환불"] }, new Set())).toBe("비슷한 질문이 질문이나 다른 비슷한 질문과 같아요");
+    expect(faqWarning({ ...faq, similar: ["반품"] }, new Set())).toBeNull();
   });
 });

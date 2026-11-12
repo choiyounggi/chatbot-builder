@@ -44,6 +44,7 @@ function kbEngine(options: {
   buildResult?: Record<string, unknown>;
   buildError?: Record<string, unknown>;
   llm?: Handler;
+  augment?: Handler;
 } = {}) {
   const puts: { etag: string | null; body: Record<string, unknown> }[] = [];
   const uploads: { contentType: string | null; body: string }[] = [];
@@ -67,6 +68,7 @@ function kbEngine(options: {
     },
     [`GET ${B}/knowledge/versions`]: options.versions ?? (() => ({ body: { bot: "sample", live: null, versions: [] } })),
     "GET /v1/builder/llm": options.llm ?? (() => ({ body: { configured: false, model: null, ok: null, ms: null, error: null } })),
+    [`POST ${B}/augment`]: options.augment ?? (() => ({ status: 409, body: { detail: "this server has no LLM" } })),
     [`POST ${B}/knowledge/search`]: async (init) => {
       const body = JSON.parse(String(init.body)) as { query: string; version?: string };
       searches.push(body);
@@ -638,3 +640,66 @@ describe("생성형 답변 (E-F)", () => {
     expect(screen.getByText("평일 9시부터 6시까지예요.")).toBeInTheDocument();
   });
 });
+
+describe("비슷한 질문 (B10)", () => {
+  const similarOf = (puts: { body: Record<string, unknown> }[]) =>
+    ((puts.at(-1)?.body.faq as { similar?: string[] }[] | undefined)?.[0]?.similar);
+
+  it("adds and removes similar questions by hand, never the question itself, and saves them", async () => {
+    const { puts } = kbEngine();
+    renderKnowledge();
+    await userEvent.click(await screen.findByText("비슷한 질문 0개"));
+    const input = screen.getByLabelText("FAQ 1 비슷한 질문 추가");
+    await userEvent.type(input, "영업 시간이  어떻게 되나요");
+    expect(screen.getByRole("button", { name: "추가" })).toBeDisabled(); // the question itself, as the engine compares
+    await userEvent.clear(input);
+    await userEvent.type(input, "몇시에 문 열어요{Enter}");
+    await userEvent.type(input, "영엄시간 알려줘{Enter}");
+    await userEvent.click(screen.getByRole("button", { name: '비슷한 질문 "몇시에 문 열어요" 삭제' }));
+    expect(screen.getByText("비슷한 질문 1개")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "지식베이스 저장" }));
+    await waitFor(() => expect(similarOf(puts)).toEqual(["영엄시간 알려줘"]));
+  });
+
+  it("LLM proposals go into the similar questions after a look", async () => {
+    const asked: unknown[] = [];
+    const { puts } = kbEngine({ augment: (init) => {
+      asked.push(JSON.parse(String(init.body)));
+      return { body: { bot: "sample", kind: "faq", id: "faq_1", model: "m", ms: 900, items: [
+        { text: "영업시간 언제임", type: "casual", status: "ok", detail: "" },
+        { text: "영엄 시간 알려줘", type: "typo", status: "ok", detail: "" },
+      ] } };
+    } });
+    renderKnowledge();
+    await userEvent.click(await screen.findByText("비슷한 질문 0개"));
+    await userEvent.click(screen.getByRole("button", { name: "FAQ 1 LLM으로 비슷한 질문 더 만들기" }));
+    await userEvent.click(await screen.findByRole("button", { name: "선택한 2개 추가" }));
+    expect(asked).toEqual([{ kind: "faq", id: "faq_1", count: 20 }]);
+    expect(screen.getByText("비슷한 질문 2개")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "지식베이스 저장" }));
+    await waitFor(() => expect(similarOf(puts)).toEqual(["영업시간 언제임", "영엄 시간 알려줘"]));
+  });
+
+  it("asks to save first while there are unsaved changes, and stops at fifty", async () => {
+    const full = { ...DOC, faq: [{ ...DOC.faq[0], similar: Array.from({ length: 50 }, (_, i) => `질문 ${i}`) }] };
+    kbEngine({ draft: () => ({ body: structuredClone(full), headers: { ETag: '"1"' } }) });
+    renderKnowledge();
+    await userEvent.click(await screen.findByText("비슷한 질문 50개"));
+    expect(screen.getByLabelText("FAQ 1 비슷한 질문 추가")).toBeDisabled();
+    expect(screen.getByText("비슷한 질문은 50개까지예요.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: '비슷한 질문 "질문 0" 삭제' }));
+    expect(screen.getByRole("button", { name: "FAQ 1 LLM으로 비슷한 질문 더 만들기" })).toBeDisabled();
+    expect(screen.getByText(/저장하지 않은 바뀐 내용이 있어요/)).toBeInTheDocument();
+  });
+
+  it("adding then removing a similar question leaves the FAQ unchanged (nothing to save)", async () => {
+    kbEngine();
+    renderKnowledge();
+    await userEvent.click(await screen.findByText("비슷한 질문 0개"));
+    await userEvent.type(screen.getByLabelText("FAQ 1 비슷한 질문 추가"), "영업시간{Enter}");
+    expect(screen.getByRole("button", { name: "지식베이스 저장" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: '비슷한 질문 "영업시간" 삭제' }));
+    expect(screen.getByRole("button", { name: "지식베이스 저장" })).toBeDisabled();
+  });
+});
+

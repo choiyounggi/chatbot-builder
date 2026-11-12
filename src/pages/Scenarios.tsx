@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { Proposals } from "../components/Proposals";
 import { type BlockOption, ReplyEditor } from "../components/ReplyEditor";
 import { useDraft } from "../draft/DraftContext";
 import {
@@ -320,6 +321,7 @@ function BlockEditor({ id, blocks, embedded = false }: { id: string; blocks: Blo
 }
 
 function Examples({ block, onChange }: { block: Block; onChange: (examples: string[]) => void }) {
+  const { botId, dirty } = useDraft();
   const [text, setText] = useState("");
   const add = (event: FormEvent) => {
     event.preventDefault();
@@ -339,6 +341,11 @@ function Examples({ block, onChange }: { block: Block; onChange: (examples: stri
         <button type="submit" className="btn" disabled={!text.trim()}>추가</button>
       </form>
       {few && <p className="help" data-tone="warn">발화가 5개보다 적으면 테스트는 되지만 배포용 학습은 할 수 없어요. 10개 이상을 권해요.</p>}
+      {block.intent && (
+        <Proposals botId={botId} kind="intent" target={block.intent} what="발화"
+                   blocked={dirty ? "저장하지 않은 바뀐 내용이 있어요. 저장하면 저장된 발화로 만들어요." : null}
+                   onAdd={(texts) => onChange([...block.examples, ...texts.filter((t) => !block.examples.includes(t))])} />
+      )}
       <ul className="examples">
         {block.examples.map((ex, i) => (
           <li key={i}>
