@@ -3,10 +3,10 @@ import { Component, type ReactNode, useState } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router";
 import { ApiError } from "./api/client";
 import { TopBar } from "./components/TopBar";
-import { BotLayout, SECTIONS } from "./pages/BotLayout";
+import { Analytics } from "./pages/Analytics";
+import { BotLayout } from "./pages/BotLayout";
 import { BotList } from "./pages/BotList";
 import { BotSettings } from "./pages/BotSettings";
-import { NotYet } from "./pages/NotYet";
 import { Deploy } from "./pages/Deploy";
 import { Edits } from "./pages/Edits";
 import { MachineLearning } from "./pages/MachineLearning";
@@ -14,9 +14,6 @@ import { Scenarios } from "./pages/Scenarios";
 import { Knowledge } from "./pages/Knowledge";
 import { Skills } from "./pages/Skills";
 import { Training } from "./pages/Training";
-
-/** Sections with their own screen; the others show which step builds them. */
-const BUILT = new Set<string>(["scenarios", "settings", "training", "ml", "deploy", "history", "skills", "knowledge"]);
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -44,9 +41,7 @@ export function AppRoutes() {
         <Route path="history" element={<Edits />} />
         <Route path="skills" element={<Skills />} />
         <Route path="knowledge" element={<Knowledge />} />
-        {SECTIONS.filter((s) => !BUILT.has(s.path)).map((s) => (
-          <Route key={s.path} path={s.path} element={<NotYet section={s.path} />} />
-        ))}
+        <Route path="analytics" element={<Analytics />} />
         <Route path="settings" element={<BotSettings />} />
       </Route>
       <Route path="*" element={<NotFound />} />

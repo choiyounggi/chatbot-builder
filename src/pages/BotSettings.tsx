@@ -1,8 +1,58 @@
-import { useQuery } from "@tanstack/react-query";
-import { listBots } from "../api/client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useNavigate } from "react-router";
+import { deleteBot } from "../api/bots";
+import { ApiError, listBots } from "../api/client";
+import { formatDateTime } from "../api/deploy";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useDraft } from "../draft/DraftContext";
+import "../styles/bots.css";
 import { DeployState } from "./BotList";
+
+function DeleteBotSection({ botId, label }: { botId: string; label: string }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [confirmId, setConfirmId] = useState("");
+  const del = useMutation({
+    mutationFn: () => deleteBot(botId),
+    onSuccess: (deleted) => {
+      // forget what this page knew about the bot (its draft, versions ...: Back must not show it as editable)
+      // and the bot list, which still shows it as an ordinary bot
+      queryClient.removeQueries({ predicate: (q) => q.queryKey[1] === botId });
+      void queryClient.invalidateQueries({ queryKey: ["bots"] });
+      void navigate("/", {
+        state: { notice: `‘${label || botId}’ 봇을 삭제했어요. ${formatDateTime(deleted.purge_after)}에 영구 삭제돼요.` },
+      });
+    },
+  });
+  const canDelete = confirmId === botId;
+
+  return (
+    <section className="danger-zone" aria-label="봇 삭제">
+      <h2>봇 삭제</h2>
+      <p>삭제하면 사용자에게 바로 답하지 않게 돼요.</p>
+      <p>7일 뒤 초안·버전·지식베이스·대화 기록까지 모두 영구 삭제돼요.</p>
+      <p>그 전에는 봇 목록에서 되살릴 수 있어요.</p>
+      <div className="field">
+        <label htmlFor="delete-confirm-id">삭제할 봇 ID 입력</label>
+        <input id="delete-confirm-id" className="input mono" value={confirmId} aria-describedby="delete-confirm-id-help"
+               onChange={(e) => setConfirmId(e.target.value)} />
+        <p id="delete-confirm-id-help" className="help">확인을 위해 봇 ID <span className="mono">{botId}</span>를 입력하세요.</p>
+      </div>
+      <div className="form-actions">
+        <button type="button" className="btn btn--danger" disabled={!canDelete || del.isPending} aria-busy={del.isPending}
+                onClick={() => del.mutate()}>
+          {del.isPending ? "삭제하는 중…" : "봇 삭제"}
+        </button>
+      </div>
+      {del.isError && (
+        del.error instanceof ApiError && del.error.status === 409
+          ? <p className="notice" data-tone="error" role="alert">이미 삭제 대기 중이에요.</p>
+          : <ErrorNotice error={del.error} onRetry={() => del.mutate()} />
+      )}
+    </section>
+  );
+}
 
 export function BotSettings() {
   const draft = useDraft();
@@ -31,6 +81,7 @@ export function BotSettings() {
         <dt>배포된 버전</dt><dd className="mono">{summary?.live ?? "—"}</dd>
         <dt>초안 리비전</dt><dd className="mono">{summary?.draft_revision ?? "—"}</dd>
       </dl>
+      {draft.doc && <DeleteBotSection botId={draft.botId} label={label} />}
     </>
   );
 }

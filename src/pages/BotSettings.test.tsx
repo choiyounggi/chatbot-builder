@@ -1,7 +1,10 @@
-import { screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import { AppRoutes, createQueryClient, Providers } from "../App";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { botEngine, fakeEngine, renderAt } from "../test/engine";
+import { botEngine, fakeEngine, renderAt, SAMPLE } from "../test/engine";
+import sample from "../test/fixtures/sample-bot.json";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -148,5 +151,67 @@ describe("settings and the save bar", () => {
     fakeEngine({ "GET /v1/builder/bots": () => ({ body: { bots: [] } }) });
     renderAt("/bots/ghost/settings");
     expect(await screen.findByRole("heading", { name: "찾을 수 없어요" })).toBeInTheDocument();
+  });
+});
+
+const deleteButton = () => screen.getByRole("button", { name: "봇 삭제" });
+const confirmIdInput = () => screen.getByLabelText("삭제할 봇 ID 입력");
+
+describe("bot deletion", () => {
+  it("keeps the delete button off until the exact bot id is typed", async () => {
+    botEngine();
+    renderAt("/bots/sample/settings");
+    await screen.findByLabelText("봇 이름");
+    expect(deleteButton()).toBeDisabled();
+    await userEvent.type(confirmIdInput(), "sampl"); // wrong: missing the last letter
+    expect(deleteButton()).toBeDisabled();
+    await userEvent.type(confirmIdInput(), "e");
+    expect(deleteButton()).toBeEnabled();
+  });
+
+  it("deletes the bot and navigates to the list with the purge time", async () => {
+    botEngine({
+      extra: { "DELETE /v1/builder/bots/sample": () => ({ status: 202, body: { bot: "sample", purge_after: "2026-11-20T03:00:00+00:00" } }) },
+    });
+    renderAt("/bots/sample/settings");
+    await screen.findByLabelText("봇 이름");
+    await userEvent.type(confirmIdInput(), "sample");
+    await userEvent.click(deleteButton());
+    expect(await screen.findByRole("heading", { name: "봇" })).toBeInTheDocument(); // back at the bot list
+    expect(screen.getByText(/영구 삭제돼요\.$/)).toBeInTheDocument();
+  });
+
+  it("explains a 409 when the bot is already waiting for deletion", async () => {
+    botEngine({
+      extra: { "DELETE /v1/builder/bots/sample": () => ({ status: 409, body: { detail: "already waiting for deletion" } }) },
+    });
+    renderAt("/bots/sample/settings");
+    await screen.findByLabelText("봇 이름");
+    await userEvent.type(confirmIdInput(), "sample");
+    await userEvent.click(deleteButton());
+    expect(await screen.findByText("이미 삭제 대기 중이에요.")).toBeInTheDocument();
+  });
+});
+
+
+describe("bot deletion: review fixes", () => {
+  it("forgets the deleted bot's cached data and refreshes the list, so nothing shows it as editable", async () => {
+    let deleted = false;
+    fakeEngine({
+      "GET /v1/builder/bots/sample/draft": () => ({ body: structuredClone(sample), headers: { ETag: '"4"' } }),
+      "DELETE /v1/builder/bots/sample": () => {
+        deleted = true;
+        return { status: 202, body: { bot: "sample", purge_after: "2026-11-20T03:00:00+00:00" } };
+      },
+      "GET /v1/builder/bots": () => ({ body: { bots: [{ ...SAMPLE, deletion: deleted ? { purge_after: "2026-11-20T03:00:00+00:00" } : null }] } }),
+    });
+    const client = createQueryClient();
+    render(<Providers client={client}><MemoryRouter initialEntries={["/bots/sample/settings"]}><AppRoutes /></MemoryRouter></Providers>);
+    await screen.findByLabelText("봇 이름");
+    expect(client.getQueryData(["draft", "sample"])).toBeDefined();
+    await userEvent.type(confirmIdInput(), "sample");
+    await userEvent.click(deleteButton());
+    expect(await screen.findByText("삭제 대기")).toBeInTheDocument();
+    expect(client.getQueryData(["draft", "sample"])).toBeUndefined(); // Back would read it again (and get the 409)
   });
 });

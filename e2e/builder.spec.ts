@@ -206,3 +206,77 @@ test("a document uploaded in the builder, indexed and deployed with the bot, ans
   expect(answer?.text).toContain("우산은 정문 안내 데스크에서 하루 동안 무료로 빌릴 수 있습니다.");
   expect(answer?.text).toContain("출처: center.md");
 });
+
+test("a bot made by copying, chatted with by a fixed script, shows exactly those numbers in 분석, and is deleted and restored", async ({ page, request }) => {
+  const engineUrl = "http://127.0.0.1:8765";
+  const botId = "e2e_stats";
+  const chat = (session: string, text: string) =>
+    request.post(`${engineUrl}/v1/bots/${botId}/sessions/${session}/messages`, { data: { text } });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "새 봇" }).click();
+  await page.locator("#new-bot-id").fill(botId);
+  await page.locator("#new-bot-label").fill("통계 확인 봇");
+  await page.getByLabel("다른 봇 복사").check();
+  await page.locator("#new-bot-copy-from").selectOption("sample");
+  await page.getByRole("button", { name: "만들기" }).click();
+  await expect(page).toHaveURL(new RegExp(`/bots/${botId}/settings$`));
+
+  // deploy training needs 5 examples per block (the copied draft may hold a one-example block from earlier tests)
+  const draftUrl = `${engineUrl}/v1/builder/bots/${botId}/draft`;
+  const current = await request.get(draftUrl);
+  const doc = (await current.json()) as { intents: Record<string, { examples: string[] }> };
+  for (const [id, intent] of Object.entries(doc.intents)) {
+    for (let n = 1; intent.examples.length < 5; n++) intent.examples.push(`${id} 예문 ${n}번째로 추가한 문장`);
+  }
+  expect((await request.put(draftUrl, { data: doc, headers: { "If-Match": current.headers().etag ?? "" } })).ok()).toBe(true);
+  const menu = page.getByRole("navigation", { name: "봇 메뉴" });
+  await menu.getByRole("link", { name: "배포" }).click();
+  await page.getByRole("button", { name: "배포용 학습" }).click();
+  await expect(page.getByText(/학습을 마쳤어요 · macro-F1/)).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "배포", exact: true }).click();
+  await expect(page.getByText(/^v\d+ 배포됨/)).toBeVisible();
+
+  // the fixed script: 3 users, 5 messages (exact training sentences), block calls 인사 2 · 현재 시각 1 · 감사 답례 1, one fallback
+  const script: [string, string][] = [["u1", "안녕하세요"], ["u1", "시간이 궁금해요"], ["u2", "안녕하세요"],
+    ["u2", "고마워요"], ["u3", "ㅁㄴㅇㄹ 쿼크 글루온 반죽"]];
+  for (const [user, text] of script) expect((await chat(user, text)).ok()).toBe(true);
+
+  await menu.getByRole("link", { name: "분석" }).click();
+  const tile = (label: string) =>
+    page.locator("li.stat-tile", { has: page.locator(".stat-tile-label", { hasText: new RegExp(`^${label}$`) }) })
+      .locator(".stat-tile-value");
+  await expect(tile("사용자")).toHaveText("3");
+  await expect(tile("신규")).toHaveText("3");
+  await expect(tile("세션")).toHaveText("3"); // a session per user: nobody paused 30 minutes
+  await expect(tile("말")).toHaveText("5");
+  await expect(tile("블록 호출")).toHaveText("4");
+  await expect(tile("폴백")).toHaveText("1");
+  const ranking = page.locator("section", { has: page.getByRole("heading", { name: "블록 순위" }) }).locator("tbody tr");
+  await expect(ranking).toHaveCount(3); // most calls first; ties by block id (current_time < thank)
+  const expectedRanking: [string, string, string][] = [["인사", "2", "50%"], ["현재 시각", "1", "25%"], ["감사 답례", "1", "25%"]];
+  for (const [i, [label, calls, share]] of expectedRanking.entries()) {
+    await expect(ranking.nth(i).locator("td[data-label='블록']")).toContainText(label);
+    await expect(ranking.nth(i).locator("td[data-label='호출']")).toHaveText(calls);
+    await expect(ranking.nth(i).locator("td[data-label='비중']")).toHaveText(share);
+  }
+  // today's row of the daily table (Korean day) holds the same numbers as the tiles
+  const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const day = page.locator("section", { has: page.getByRole("heading", { name: "일별" }) }).locator("tbody tr", { hasText: today });
+  const expectedDay: [string, string][] = [["사용자", "3"], ["신규", "3"], ["재방문", "0"], ["세션", "3"], ["말", "5"], ["블록 호출", "4"], ["폴백", "1"]];
+  for (const [field, value] of expectedDay) {
+    await expect(day.locator(`td[data-label='${field}']`)).toHaveText(value);
+  }
+
+  await menu.getByRole("link", { name: "설정" }).click();
+  await page.locator("#delete-confirm-id").fill(botId);
+  await page.getByRole("button", { name: "봇 삭제" }).click();
+  await expect(page.getByText(/‘통계 확인 봇’ 봇을 삭제했어요\. .*에 영구 삭제돼요\./)).toBeVisible();
+  const row = page.getByRole("row").filter({ hasText: "통계 확인 봇" });
+  await expect(row.getByText("삭제 대기")).toBeVisible();
+  expect((await chat("u9", "안녕하세요")).status()).toBe(404); // out of service at once
+
+  await row.getByRole("button", { name: "되살리기" }).click();
+  await expect(page.getByText("‘통계 확인 봇’을(를) 되살렸어요")).toBeVisible();
+  expect((await chat("u9", "안녕하세요")).ok()).toBe(true); // the deployed version answers again
+});

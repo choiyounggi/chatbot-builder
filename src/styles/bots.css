@@ -1,0 +1,10 @@
+/* 봇 생성·삭제 (B7) — tokens only (src/styles/tokens.css). */
+
+.danger-zone {
+  display: grid; gap: var(--space-sm); margin-top: var(--space-lg);
+  padding: var(--space-md); border: var(--rule-width) solid var(--color-error);
+  border-radius: var(--radius-md); background: var(--color-error-wash);
+}
+.danger-zone p { font-size: var(--text-sm); color: var(--color-ink-2); }
+.btn--danger { border-color: var(--color-error); color: var(--color-error); }
+@media (hover: hover) { .btn--danger:hover:not(:disabled) { background: var(--color-error-wash); } }
