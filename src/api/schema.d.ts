@@ -89,6 +89,51 @@ export interface paths {
          */
         get: operations["list_bots_v1_builder_bots_get"];
         put?: never;
+        /**
+         * Create Bot
+         * @description A new draft (not deployed): empty, or (with copy_from) a copy of another bot's draft.
+         */
+        post: operations["create_bot_v1_builder_bots_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Bot
+         * @description Request bot's deletion: out of service now (chat 404s), purged after 7 days unless restored.
+         */
+        delete: operations["delete_bot_v1_builder_bots__bot__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Analytics Report
+         * @description Period totals, a daily table, block-call ranking and new-user retention (분석, E12).
+         *     Default period: the 7 days ending today (KST). Only `{bot}:` sessions count.
+         */
+        get: operations["analytics_report_v1_builder_bots__bot__analytics_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -270,6 +315,26 @@ export interface paths {
         get: operations["misunderstood_v1_builder_bots__bot__misunderstood_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builder/bots/{bot}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Bot
+         * @description Cancel a pending deletion and serve the bot's deployed pair again.
+         */
+        post: operations["restore_bot_v1_builder_bots__bot__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -619,6 +684,101 @@ export interface components {
             /** Texts */
             texts: string[];
         };
+        /** AnalyticsBlockOut */
+        AnalyticsBlockOut: {
+            /** Block */
+            block: string;
+            /** Calls */
+            calls: number;
+            /** Label */
+            label: string;
+        };
+        /** AnalyticsDayOut */
+        AnalyticsDayOut: {
+            /** Block Calls */
+            block_calls: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Fallbacks */
+            fallbacks: number;
+            /** Knowledge Answers */
+            knowledge_answers: number;
+            /** Messages */
+            messages: number;
+            /** New Users */
+            new_users: number;
+            /** Returning Users */
+            returning_users: number;
+            /** Sessions */
+            sessions: number;
+            /** Users */
+            users: number;
+        };
+        /** AnalyticsOut */
+        AnalyticsOut: {
+            /** Blocks */
+            blocks: components["schemas"]["AnalyticsBlockOut"][];
+            /** Bot */
+            bot: string;
+            /** Days */
+            days: components["schemas"]["AnalyticsDayOut"][];
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /** Retention */
+            retention: components["schemas"]["AnalyticsRetentionOut"][];
+            /**
+             * Timezone
+             * @default Asia/Seoul
+             */
+            timezone: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            totals: components["schemas"]["AnalyticsTotalsOut"];
+        };
+        /** AnalyticsRetentionOut */
+        AnalyticsRetentionOut: {
+            /** D1 */
+            d1: number | null;
+            /** D7 */
+            d7: number | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** New Users */
+            new_users: number;
+        };
+        /** AnalyticsTotalsOut */
+        AnalyticsTotalsOut: {
+            /** Block Calls */
+            block_calls: number;
+            /** Fallbacks */
+            fallbacks: number;
+            /** Knowledge Answers */
+            knowledge_answers: number;
+            /** Knowledge Rate */
+            knowledge_rate: number | null;
+            /** Messages */
+            messages: number;
+            /** New Users */
+            new_users: number;
+            /** Returning Users */
+            returning_users: number;
+            /** Sessions */
+            sessions: number;
+            /** Users */
+            users: number;
+        };
         /** BasicCard */
         BasicCard: {
             /** Buttons */
@@ -628,6 +788,34 @@ export interface components {
             thumbnail?: components["schemas"]["Thumbnail"] | null;
             /** Title */
             title?: string | null;
+        };
+        /** BotCreateIn */
+        BotCreateIn: {
+            /** Copy From */
+            copy_from?: string | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+        };
+        /** BotCreatedOut */
+        BotCreatedOut: {
+            /** Bot */
+            bot: string;
+            /** Revision */
+            revision: number;
+        };
+        /** BotDeletedOut */
+        BotDeletedOut: {
+            /** Bot */
+            bot: string;
+            /** Purge After */
+            purge_after: string;
+        };
+        /** BotDeletionOut */
+        BotDeletionOut: {
+            /** Purge After */
+            purge_after: string;
         };
         /**
          * BotDocument
@@ -683,8 +871,16 @@ export interface components {
             /** Bots */
             bots: components["schemas"]["BotSummaryOut"][];
         };
+        /** BotRestoredOut */
+        BotRestoredOut: {
+            /** Bot */
+            bot: string;
+            /** Live */
+            live: string | null;
+        };
         /** BotSummaryOut */
         BotSummaryOut: {
+            deletion?: components["schemas"]["BotDeletionOut"] | null;
             /** Draft Revision */
             draft_revision: number | null;
             /** Id */
@@ -1814,6 +2010,110 @@ export interface operations {
             };
         };
     };
+    create_bot_v1_builder_bots_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotCreatedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_bot_v1_builder_bots__bot__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotDeletedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analytics_report_v1_builder_bots__bot__analytics_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     deploy_v1_builder_bots__bot__deploy_post: {
         parameters: {
             query?: never;
@@ -2227,6 +2527,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MisunderstoodOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_bot_v1_builder_bots__bot__restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bot: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotRestoredOut"];
                 };
             };
             /** @description Validation Error */
