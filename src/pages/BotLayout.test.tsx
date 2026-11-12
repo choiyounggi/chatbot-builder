@@ -27,12 +27,12 @@ describe("bot shell", () => {
     expect(await screen.findByText("샘플 봇", { selector: "strong" })).toBeInTheDocument();
   });
 
-  it("says which step builds a section that does not exist yet", async () => {
+  it("opens every section's own screen (the last one, 분석, included)", async () => {
     engine();
     renderAt("/bots/sample/settings");
     await userEvent.click(await screen.findByRole("link", { name: "분석" }));
-    expect(screen.getByRole("heading", { name: "분석" })).toBeInTheDocument();
-    expect(screen.getByText("B7 — 분석")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "분석", level: 1 })).toBeInTheDocument();
+    expect(screen.getByText(/봇테스트 대화는 세지 않아요/)).toBeInTheDocument();
   });
 
   it("toggles the entity and bot test panels", async () => {
