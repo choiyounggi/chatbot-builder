@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router";
 import { ApiError, AuthError, EngineUnreachable } from "../api/client";
 import { TokenForm } from "./TokenForm";
 
@@ -11,6 +12,15 @@ export function ErrorNotice({ error, onRetry }: { error: unknown; onRetry: () =>
         void queryClient.invalidateQueries();
         onRetry();
       }} />
+    );
+  }
+  if (error instanceof ApiError && error.status === 409 && /waiting to be deleted/.test(error.message)) {
+    return (
+      <div className="notice" data-tone="error" role="alert">
+        <h2>이 봇은 삭제 대기 중이에요.</h2>
+        <p>봇 목록에서 되살린 뒤 고칠 수 있어요.</p>
+        <div className="actions"><Link className="btn" to="/">봇 목록으로</Link></div>
+      </div>
     );
   }
   let title = "요청을 처리하지 못했어요";
