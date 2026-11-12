@@ -150,3 +150,42 @@ describe("settings and the save bar", () => {
     expect(await screen.findByRole("heading", { name: "찾을 수 없어요" })).toBeInTheDocument();
   });
 });
+
+const deleteButton = () => screen.getByRole("button", { name: "봇 삭제" });
+const confirmIdInput = () => screen.getByLabelText("삭제할 봇 ID 입력");
+
+describe("bot deletion", () => {
+  it("keeps the delete button off until the exact bot id is typed", async () => {
+    botEngine();
+    renderAt("/bots/sample/settings");
+    await screen.findByLabelText("봇 이름");
+    expect(deleteButton()).toBeDisabled();
+    await userEvent.type(confirmIdInput(), "sampl"); // wrong: missing the last letter
+    expect(deleteButton()).toBeDisabled();
+    await userEvent.type(confirmIdInput(), "e");
+    expect(deleteButton()).toBeEnabled();
+  });
+
+  it("deletes the bot and navigates to the list with the purge time", async () => {
+    botEngine({
+      extra: { "DELETE /v1/builder/bots/sample": () => ({ status: 202, body: { bot: "sample", purge_after: "2026-11-20T03:00:00+00:00" } }) },
+    });
+    renderAt("/bots/sample/settings");
+    await screen.findByLabelText("봇 이름");
+    await userEvent.type(confirmIdInput(), "sample");
+    await userEvent.click(deleteButton());
+    expect(await screen.findByRole("heading", { name: "봇" })).toBeInTheDocument(); // back at the bot list
+    expect(screen.getByText(/영구 삭제돼요\.$/)).toBeInTheDocument();
+  });
+
+  it("explains a 409 when the bot is already waiting for deletion", async () => {
+    botEngine({
+      extra: { "DELETE /v1/builder/bots/sample": () => ({ status: 409, body: { detail: "already waiting for deletion" } }) },
+    });
+    renderAt("/bots/sample/settings");
+    await screen.findByLabelText("봇 이름");
+    await userEvent.type(confirmIdInput(), "sample");
+    await userEvent.click(deleteButton());
+    expect(await screen.findByText("이미 삭제 대기 중이에요.")).toBeInTheDocument();
+  });
+});
