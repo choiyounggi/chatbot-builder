@@ -1,6 +1,7 @@
 /* 웹 채팅 — tokens only (src/styles/tokens.css). */
 
 .web-form { display: grid; gap: var(--space-sm); max-width: 44rem; }
+.web-fields { display: grid; gap: var(--space-sm); margin: 0; padding: 0; border: 0; min-width: 0; }
 .web-color { display: flex; align-items: center; gap: var(--space-xs); }
 .web-color input[type="color"] {
   width: 3rem; height: 2.25rem; padding: 0; border: var(--rule-width) solid var(--color-rule);

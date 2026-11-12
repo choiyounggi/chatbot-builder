@@ -325,11 +325,17 @@ test("a bot made by copying, chatted with by a fixed script, shows exactly those
 
 test("웹 채팅: sites allowed in the builder can talk to the bot from a browser, others are refused", async ({ page, request }) => {
   const engineUrl = "http://127.0.0.1:8765";
+  const tryFrom = (origin: string) => request.post(`${engineUrl}/v1/bots/sample/sessions/e2e-web-0/messages`,
+    { data: { text: "안녕" }, headers: { Origin: origin } });
+  // start from no saved settings (re-runnable on an engine that ran this before): every site is refused
+  expect((await request.put(`${engineUrl}/v1/builder/bots/sample/web`, { data: {} })).ok()).toBe(true);
+  expect((await tryFrom("https://shop.example")).status()).toBe(403);
+
   await page.goto("/");
   await page.getByRole("link", { name: "샘플 봇" }).click();
   await page.getByRole("navigation", { name: "봇 메뉴" }).getByRole("link", { name: "웹 채팅" }).click();
   const origins = page.getByLabel("허용 도메인");
-  await expect(origins).toHaveValue(""); // nothing allowed until saved
+  await expect(origins).toHaveValue("");
   await origins.fill("HTTPS://SHOP.EXAMPLE:443\nhttp://localhost:5173");
   await page.getByLabel("채팅창 제목").fill("쇼핑 도우미");
   await page.getByRole("button", { name: "웹 채팅 저장" }).click();

@@ -30,7 +30,8 @@ export function normalizeOrigin(value: string): string | null {
   if (port !== undefined) {
     const n = Number(port.slice(1));
     if (n < 1 || n > 65535) return null;
-    if ((text.startsWith("https://") && n === 443) || (text.startsWith("http://") && n === 80)) return text.slice(0, -port.length);
+    // compared as written, like the engine (":00080" stays)
+    if ((text.startsWith("https://") && port === ":443") || (text.startsWith("http://") && port === ":80")) return text.slice(0, -port.length);
   }
   return text;
 }

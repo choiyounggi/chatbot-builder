@@ -53,7 +53,7 @@ describe("WebChat", () => {
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0]).toEqual({ allowed_origins: ["https://shop.example", "https://app.example"], title: "상담봇", color: "#2563EB",
                               placeholder: "무엇이 궁금하세요?" });
-    expect(await screen.findByRole("status")).toHaveTextContent("저장했어요. 바로 적용돼요.");
+    expect(await screen.findByText("저장했어요. 바로 적용돼요.")).toHaveAttribute("role", "status");
     expect(screen.getByRole("button", { name: "웹 채팅 저장" })).toBeDisabled();
   });
 
@@ -63,8 +63,9 @@ describe("WebChat", () => {
     const origins = await screen.findByLabelText("허용 도메인");
     await userEvent.type(origins, "\nhttps://shop.example/path\nhttps://SHOP.example");
     await userEvent.clear(screen.getByLabelText("입력칸 안내 문구"));
-    const alert = await screen.findByRole("alert");
-    expect(within(alert).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+    const listId = origins.getAttribute("aria-describedby")?.split(" ")[1] ?? "";
+    const list = document.getElementById(listId) as HTMLElement;
+    expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "‘https://shop.example/path’은(는) 주소 형식이 아니에요. https://example.com 처럼 경로 없이 써 주세요.",
       "‘https://shop.example’이(가) 두 번 있어요.",
       "입력칸 안내 문구를 써 주세요.",
@@ -103,16 +104,23 @@ describe("WebChat", () => {
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
     renderWeb();
     await screen.findByLabelText("허용 도메인");
-    expect(screen.getByLabelText("웹사이트 코드")).toHaveTextContent('<script src="https://위젯-주소/chatbot.js" data-engine="https://엔진-주소" data-bot="sample" async></script>');
-    await userEvent.type(screen.getByLabelText("위젯 주소"), "https://chat.example/w/");
+    expect(screen.getByLabelText("웹사이트 코드")).toHaveTextContent("위젯 주소와 엔진 주소를 http(s) 주소로 넣으면 여기에 코드가 생겨요.");
+    expect(screen.getByRole("button", { name: "웹사이트 코드 복사" })).toBeDisabled();
+    expect(localStorage.getItem("chatbot-builder:web-urls")).toBeNull(); // nothing written until typed
+    await userEvent.type(screen.getByLabelText("위젯 주소"), "chat.example"); // no scheme: not an address yet
+    expect(screen.getByRole("button", { name: "웹사이트 코드 복사" })).toBeDisabled();
+    await userEvent.clear(screen.getByLabelText("위젯 주소"));
+    await userEvent.type(screen.getByLabelText("위젯 주소"), "https://chat.example/w/?v=1#top");
     await userEvent.type(screen.getByLabelText("엔진 주소"), "https://api.example");
     expect(screen.getByLabelText("웹사이트 코드")).toHaveTextContent('<script src="https://chat.example/w/chatbot.js" data-engine="https://api.example" data-bot="sample" async></script>');
     expect(screen.getByLabelText("웹뷰 주소")).toHaveTextContent("https://chat.example/w/chat.html?engine=https%3A%2F%2Fapi.example&bot=sample&close=1");
-    expect(JSON.parse(localStorage.getItem("chatbot-builder:web-urls") ?? "{}")).toEqual({ widget: "https://chat.example/w/", engine: "https://api.example" });
 
+    expect(JSON.parse(localStorage.getItem("chatbot-builder:web-urls") ?? "{}")).toEqual({ widget: "https://chat.example/w/?v=1#top", engine: "https://api.example" });
     await userEvent.click(screen.getByRole("button", { name: "웹사이트 코드 복사" }));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("chatbot.js"));
-    expect(screen.getByRole("button", { name: "복사했어요" })).toBeInTheDocument();
+    expect(screen.getAllByRole("status").some((s) => s.textContent === "웹사이트 코드를 복사했어요.")).toBe(true);
+    await userEvent.type(screen.getByLabelText("엔진 주소"), "/v2"); // the code changed: not copied yet
+    expect(screen.getAllByRole("status").some((s) => s.textContent === "웹사이트 코드를 복사했어요.")).toBe(false);
 
     await userEvent.click(screen.getByRole("button", { name: "허용 도메인에 추가" }));
     expect(screen.getByLabelText("허용 도메인")).toHaveValue("https://shop.example\nhttps://chat.example");
@@ -121,14 +129,65 @@ describe("WebChat", () => {
     await waitFor(() => expect(puts[0]?.allowed_origins).toEqual(["https://shop.example", "https://chat.example"]));
   });
 
+  it("fields wait while a save is on its way, and what the save sent becomes what is shown", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => { release = r; });
+    const puts = engine({ put: async (init) => { await gate; return { body: { bot: "sample", ...JSON.parse(String(init.body)) } }; } });
+    renderWeb();
+    await userEvent.type(await screen.findByLabelText("채팅창 제목"), "첫");
+    await userEvent.click(screen.getByRole("button", { name: "웹 채팅 저장" }));
+    expect(screen.getByLabelText("채팅창 제목")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "저장하는 중…" })).toBeDisabled();
+    release();
+    await waitFor(() => expect(screen.getByLabelText("채팅창 제목")).toBeEnabled());
+    expect(screen.getByLabelText("채팅창 제목")).toHaveValue("첫");
+    expect(puts).toHaveLength(1);
+  });
+
+  it("a change saved in another tab shows in the fields not edited here, and is not undone by this save", async () => {
+    let origins = ["https://shop.example"];
+    const puts = engine({ get: () => ({ body: { ...SAVED, allowed_origins: origins } }) });
+    const client = createQueryClient();
+    client.setDefaultOptions({ queries: { ...client.getDefaultOptions().queries, retryDelay: 0 } });
+    render(<Providers client={client}><MemoryRouter><DraftProvider botId="sample"><WebChat /></DraftProvider></MemoryRouter></Providers>);
+    await userEvent.type(await screen.findByLabelText("채팅창 제목"), "새 제목");
+    origins = ["https://shop.example", "https://other-tab.example"];
+    await client.refetchQueries({ queryKey: ["web", "sample"] });
+    await waitFor(() => expect(screen.getByLabelText("허용 도메인")).toHaveValue("https://shop.example\nhttps://other-tab.example"));
+    expect(screen.getByLabelText("채팅창 제목")).toHaveValue("새 제목");
+    await userEvent.click(screen.getByRole("button", { name: "웹 채팅 저장" }));
+    await waitFor(() => expect(puts[0]).toMatchObject({ allowed_origins: origins, title: "새 제목" }));
+  });
+
+  it("typing a value back to what is saved means nothing changed", async () => {
+    engine();
+    renderWeb();
+    const title = await screen.findByLabelText("채팅창 제목");
+    await userEvent.type(title, "x");
+    expect(screen.getByRole("button", { name: "웹 채팅 저장" })).toBeEnabled();
+    await userEvent.clear(title);
+    expect(screen.getByRole("button", { name: "웹 채팅 저장" })).toBeDisabled();
+  });
+
+  it("the same problem twice is listed twice", async () => {
+    engine();
+    renderWeb();
+    await userEvent.type(await screen.findByLabelText("허용 도메인"), "\nfoo\nfoo");
+    const list = screen.getByLabelText("허용 도메인").getAttribute("aria-describedby")?.split(" ")[1] ?? "";
+    expect(document.getElementById(list)?.querySelectorAll("li")).toHaveLength(2);
+  });
+
   it("says so when the clipboard cannot be used, and survives blocked storage", async () => {
     engine();
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: vi.fn(async () => { throw new Error("denied"); }) } });
     const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("blocked"); });
-    localStorage.getItem = () => { throw new DOMException("blocked"); };
+    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new DOMException("blocked"); });
     renderWeb();
-    await userEvent.click(await screen.findByRole("button", { name: "웹뷰 주소 복사" }));
+    await userEvent.type(await screen.findByLabelText("위젯 주소"), "https://w.example");
+    await userEvent.type(screen.getByLabelText("엔진 주소"), "https://e.example");
+    await userEvent.click(screen.getByRole("button", { name: "웹뷰 주소 복사" }));
     expect(await screen.findByText("복사하지 못했어요. 위 글을 직접 선택해 복사해 주세요.")).toBeInTheDocument();
     setItem.mockRestore();
+    getItem.mockRestore();
   });
 });

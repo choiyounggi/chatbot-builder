@@ -6,9 +6,11 @@ describe("normalizeOrigin (the engine's rule)", () => {
     ["https://Shop.Example", "https://shop.example"], [" http://localhost:5173 ", "http://localhost:5173"],
     ["https://shop.example:443", "https://shop.example"], ["http://shop.example:80", "http://shop.example"],
     ["https://shop.example:80", "https://shop.example:80"], ["http://[::1]:3000", "http://[::1]:3000"],
+    ["http://a.example:00080", "http://a.example:00080"], // as the engine: compared as written
+    ["https://xn--9n2bp8q.example", "https://xn--9n2bp8q.example"],
   ])("%j → %j", (given, expected) => expect(normalizeOrigin(given)).toBe(expected));
   it.each(["https://shop.example/", "https://shop.example/a", "ftp://x.example", "shop.example", "https://x.example:0",
-           "https://x.example:65536", "null", "", "https://-x.example", "https://user@x.example"])("refuses %j", (bad) => {
+           "https://x.example:65536", "null", "", "https://-x.example", "https://user@x.example", "https://샵.example"])("refuses %j", (bad) => {
     expect(normalizeOrigin(bad)).toBeNull();
   });
 });
@@ -37,5 +39,6 @@ describe("snippets", () => {
   });
   it("escape what would break out of an attribute", () => {
     expect(scriptSnippet('https://w.example/"><b>', "https://e.example", "s")).toContain('src="https://w.example/&quot;>&lt;b>/chatbot.js"');
+    expect(scriptSnippet("https://w.example", "https://e.example/?a=1&b=2", "s")).toContain('data-engine="https://e.example/?a=1&amp;b=2"');
   });
 });

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { checkOrigins, getWeb, saveWeb, scriptSnippet, webviewUrl, type WebOut, type WebSettings } from "../api/web";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useDraft } from "../draft/DraftContext";
@@ -22,6 +22,7 @@ const toForm = (web: WebOut): Form => ({
   origins: (web.allowed_origins ?? []).join("\n"), title: web.title ?? "", color: web.color, placeholder: web.placeholder,
 });
 
+/** What the builder typed last in this browser (written only when typed), else the deployment's default. */
 function readUrls(): { widget: string; engine: string } {
   try {
     const saved = JSON.parse(localStorage.getItem(URLS_KEY) ?? "null") as { widget?: unknown; engine?: unknown } | null;
@@ -34,29 +35,49 @@ function readUrls(): { widget: string; engine: string } {
   }
 }
 
-function originOf(url: string): string | null {
+function writeUrls(urls: { widget: string; engine: string }): void {
   try {
-    const u = new URL(url);
-    return u.protocol === "http:" || u.protocol === "https:" ? u.origin : null;
+    localStorage.setItem(URLS_KEY, JSON.stringify(urls));
+  } catch {
+    // storage blocked: the addresses last for this page only
+  }
+}
+
+/** An http(s) address as a base for files (origin + path, no query or fragment), or null. */
+function baseOf(url: string): string | null {
+  try {
+    const u = new URL(url.trim());
+    return u.protocol === "http:" || u.protocol === "https:" ? `${u.origin}${u.pathname.replace(/\/+$/, "")}` : null;
   } catch {
     return null;
   }
 }
 
-function Copy({ label, text }: { label: string; text: string }) {
-  const [state, setState] = useState<"idle" | "done" | "failed">("idle");
-  const copy = async () => {
+function originOf(url: string): string | null {
+  const base = baseOf(url);
+  return base === null ? null : new URL(base).origin;
+}
+
+function Copy({ label, text }: { label: string; text: string | null }) {
+  const [copied, setCopied] = useState<{ text: string; ok: boolean } | null>(null); // for this text only
+  const state = copied && copied.text === text ? (copied.ok ? "done" : "failed") : "idle";
+  const copy = async (value: string) => {
     try {
-      await navigator.clipboard.writeText(text);
-      setState("done");
+      await navigator.clipboard.writeText(value);
+      setCopied({ text: value, ok: true });
     } catch {
-      setState("failed");
+      setCopied({ text: value, ok: false });
     }
   };
   return (
     <div className="copy">
-      <pre className="copy__text" aria-label={label}>{text}</pre>
-      <button type="button" className="btn btn--quiet" onClick={() => void copy()}>{state === "done" ? "복사했어요" : `${label} 복사`}</button>
+      <pre className="copy__text" role="region" aria-label={label} tabIndex={0}>
+        {text ?? "위젯 주소와 엔진 주소를 http(s) 주소로 넣으면 여기에 코드가 생겨요."}
+      </pre>
+      <button type="button" className="btn btn--quiet" disabled={text === null} onClick={() => text !== null && void copy(text)}>
+        {`${label} 복사`}
+      </button>
+      <p className="help" role="status">{state === "done" ? `${label}를 복사했어요.` : ""}</p>
       {state === "failed" && <p className="help" data-tone="error" role="alert">복사하지 못했어요. 위 글을 직접 선택해 복사해 주세요.</p>}
     </div>
   );
@@ -67,40 +88,45 @@ export function WebChat() {
   const { botId, doc } = useDraft();
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["web", botId], queryFn: () => getWeb(botId) });
-  const [edited, setEdited] = useState<Form | null>(null); // null: showing what is saved
+  // only the fields the builder changed, over what is saved: a refetch (another tab saved) still shows
+  // the fields not touched here, and a save sends them as they are now
+  const [edited, setEdited] = useState<Partial<Form>>({});
   const [urls, setUrls] = useState(readUrls);
-  const ids = { origins: useId(), title: useId(), color: useId(), placeholder: useId(), widget: useId(), engine: useId() };
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(URLS_KEY, JSON.stringify(urls));
-    } catch {
-      // storage blocked: the addresses last for this page only
-    }
-  }, [urls]);
+  const ids = { origins: useId(), title: useId(), color: useId(), placeholder: useId(), widget: useId(), engine: useId(),
+                problems: useId() };
 
   const save = useMutation({
     mutationFn: (settings: WebSettings) => saveWeb(botId, settings),
     onSuccess: (saved) => {
       queryClient.setQueryData(["web", botId], saved);
-      setEdited(null);
+      setEdited({}); // the fields were locked while it was on its way
     },
   });
 
-  const form: Form | null = edited ?? (query.data ? toForm(query.data) : null);
+  const saved = query.data ? toForm(query.data) : null;
+  const form: Form | null = saved && { ...saved, ...edited };
   const label = typeof doc?.label === "string" && doc.label ? doc.label : botId;
   const check = checkOrigins(form?.origins ?? "");
   const settings: WebSettings | null = form && {
     allowed_origins: check.origins, title: form.title.trim() || null, color: form.color.toUpperCase(),
     placeholder: form.placeholder.trim(),
   };
-  const changed = !!edited && !!query.data && JSON.stringify(toForm(query.data)) !== JSON.stringify(edited);
+  const changed = !!saved && (Object.keys(edited) as (keyof Form)[]).some((k) => edited[k] !== saved[k]);
   const problems = [...check.problems, ...(form && !form.placeholder.trim() ? ["입력칸 안내 문구를 써 주세요."] : [])];
-  const edit = (patch: Partial<Form>) => { if (form) { save.reset(); setEdited({ ...form, ...patch }); } };
+  const edit = (patch: Partial<Form>) => {
+    if (save.isPending) return;
+    save.reset();
+    setEdited((e) => ({ ...e, ...patch }));
+  };
+  const changeUrls = (patch: Partial<typeof urls>) => setUrls((u) => {
+    const next = { ...u, ...patch };
+    writeUrls(next);
+    return next;
+  });
 
-  const widget = urls.widget.trim() || "https://위젯-주소";
-  const engine = urls.engine.trim() || "https://엔진-주소";
-  const widgetOrigin = originOf(urls.widget.trim());
+  const widget = baseOf(urls.widget);
+  const engine = baseOf(urls.engine);
+  const widgetOrigin = originOf(urls.widget);
   const missingWidget = widgetOrigin !== null && form !== null && !check.origins.includes(widgetOrigin);
 
   return (
@@ -114,9 +140,10 @@ export function WebChat() {
 
       {form && (
         <form className="web-form" onSubmit={(e) => { e.preventDefault(); if (settings && problems.length === 0) save.mutate(settings); }}>
+          <fieldset className="web-fields" disabled={save.isPending}>
           <div className="field">
             <label htmlFor={ids.origins}>허용 도메인</label>
-            <textarea id={ids.origins} className="input mono" rows={4} value={form.origins} aria-describedby={`${ids.origins}-help`}
+            <textarea id={ids.origins} className="input mono" rows={4} value={form.origins} aria-describedby={`${ids.origins}-help ${ids.problems}`}
                       aria-invalid={check.problems.length > 0} placeholder={"https://shop.example.com\nhttps://chat.example.com"}
                       onChange={(e) => edit({ origins: e.target.value })} />
             <p id={`${ids.origins}-help`} className="help">
@@ -140,11 +167,13 @@ export function WebChat() {
           <div className="field">
             <label htmlFor={ids.placeholder}>입력칸 안내 문구</label>
             <input id={ids.placeholder} className="input" maxLength={60} value={form.placeholder}
+                   aria-invalid={!form.placeholder.trim()} aria-describedby={ids.problems}
                    onChange={(e) => edit({ placeholder: e.target.value })} />
           </div>
-          {problems.length > 0 && (
-            <ul className="help web-problems" data-tone="error" role="alert">{problems.map((p) => <li key={p}>{p}</li>)}</ul>
-          )}
+          </fieldset>
+          <ul id={ids.problems} className="help web-problems" data-tone="error" hidden={problems.length === 0}>
+            {problems.map((p, i) => <li key={i}>{p}</li>)}
+          </ul>
           <div className="form-actions">
             <button type="submit" className="btn btn--primary" disabled={!changed || problems.length > 0 || save.isPending} aria-busy={save.isPending}>
               {save.isPending ? "저장하는 중…" : "웹 채팅 저장"}
@@ -161,19 +190,19 @@ export function WebChat() {
         <div className="field">
           <label htmlFor={ids.widget}>위젯 주소</label>
           <input id={ids.widget} className="input mono" value={urls.widget} placeholder="https://chat.example.com"
-                 onChange={(e) => setUrls((u) => ({ ...u, widget: e.target.value }))} />
+                 onChange={(e) => changeUrls({ widget: e.target.value })} />
         </div>
         <div className="field">
           <label htmlFor={ids.engine}>엔진 주소</label>
           <input id={ids.engine} className="input mono" value={urls.engine} placeholder="https://chat-api.example.com"
-                 onChange={(e) => setUrls((u) => ({ ...u, engine: e.target.value }))} />
+                 onChange={(e) => changeUrls({ engine: e.target.value })} />
         </div>
         <h3>웹사이트</h3>
         <p>사이트의 <span className="mono">&lt;/body&gt;</span> 바로 앞에 넣으면 오른쪽 아래에 채팅 버튼이 생겨요. 그 사이트 주소가 허용 도메인에 있어야 해요.</p>
-        <Copy label="웹사이트 코드" text={scriptSnippet(widget, engine, botId)} />
+        <Copy label="웹사이트 코드" text={widget && engine ? scriptSnippet(widget, engine, botId) : null} />
         <h3>앱 웹뷰</h3>
         <p>앱의 웹뷰에서 이 주소를 열어요. 닫기 버튼과 링크는 앱으로 알려요(위젯 README의 앱 연동).</p>
-        <Copy label="웹뷰 주소" text={webviewUrl(widget, engine, botId)} />
+        <Copy label="웹뷰 주소" text={widget && engine ? webviewUrl(widget, engine, botId) : null} />
         {missingWidget && widgetOrigin && (
           <p className="notice" data-tone="warn">
             웹뷰에서 쓰려면 위젯 주소 <span className="mono">{widgetOrigin}</span>도 허용 도메인에 있어야 해요.{" "}
