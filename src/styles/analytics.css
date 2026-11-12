@@ -1,0 +1,22 @@
+/* 분석 — tokens only (src/styles/tokens.css). Chart series: 사용자 = accent, 세션 = ink-2(점선),
+   색이 아니라 선 모양과 범례로도 구분해요(Deuteranopia/Protanopia에서도 안전). */
+
+.stat-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: var(--space-sm); }
+.stat-tile { display: grid; gap: var(--space-3xs); padding: var(--space-sm); border: var(--rule-width) solid var(--color-rule); border-radius: var(--radius-md); background: var(--color-paper-2); }
+.stat-tile-label { margin: 0; font-size: var(--text-xs); color: var(--color-muted); }
+.stat-tile-value { margin: 0; font-size: var(--text-xl); font-weight: 650; color: var(--color-ink); font-variant-numeric: tabular-nums; }
+.stat-tile-help { margin: 0; font-size: var(--text-xs); color: var(--color-muted); }
+
+.analytics-chart-wrap { display: grid; gap: var(--space-xs); }
+.analytics-chart { width: 100%; height: auto; display: block; }
+.analytics-axis { stroke: var(--color-rule-2); stroke-width: 1; }
+.analytics-line { stroke-width: 2; fill: none; }
+.analytics-line--users { stroke: var(--color-accent); }
+.analytics-line--sessions { stroke: var(--color-ink-2); stroke-dasharray: 5 4; }
+.analytics-dot--users { fill: var(--color-accent); }
+.analytics-chart-range { margin: 0; font-size: var(--text-xs); color: var(--color-muted); }
+
+.analytics-legend { display: flex; gap: var(--space-md); list-style: none; margin: 0; padding: 0; font-size: var(--text-xs); color: var(--color-muted); }
+.analytics-swatch { display: inline-block; width: 0.75rem; height: 0.1875rem; margin-right: var(--space-2xs); vertical-align: middle; border-radius: 2px; }
+.analytics-swatch--users { background: var(--color-accent); }
+.analytics-swatch--sessions { background: var(--color-ink-2); }
