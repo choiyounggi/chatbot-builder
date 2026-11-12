@@ -127,6 +127,6 @@ export const GENERATION_OUTCOME: Record<KbGenerated["outcome"], string> = {
   unsupported_number: "자료에 없는 숫자가 있어 버리고 답하지 않아요",
   too_long: "너무 길어 버리고 답하지 않아요",
   empty: "빈 답이라 버리고 답하지 않아요",
-  timeout: "시간 안에 오지 않아 답하지 않아요",
-  error: "LLM 서버 오류로 답하지 않아요",
+  timeout: "시간 안에 오지 않아 찾은 자료 원문으로 답해요",
+  error: "LLM 서버 오류로 찾은 자료 원문으로 답해요",
 };

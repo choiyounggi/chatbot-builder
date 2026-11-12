@@ -10,7 +10,7 @@ permissions:
 
 env:
   # The engine this builder is built and tested against (chatbot-engine commit).
-  ENGINE_REF: 588f268a3d86ac086a995c66a62f4c6016c74808
+  ENGINE_REF: 0f7fef5fdee1c2fbb94d382d2b2b89bb0b2749c8
 
 jobs:
   check:

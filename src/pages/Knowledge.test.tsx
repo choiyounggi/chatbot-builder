@@ -577,7 +577,7 @@ describe("생성형 답변 (E-F)", () => {
     vi.unstubAllGlobals();
     kbEngine({ llm: () => ({ body: { configured: true, model: "qwen3-8b", ok: false, ms: null, error: "cannot reach the LLM server" } }) });
     renderKnowledge();
-    expect(await screen.findByText(/LLM이 답하지 않아요: cannot reach the LLM server/)).toBeInTheDocument();
+    expect(await screen.findByText(/LLM이 답하지 않아요: cannot reach the LLM server\. 그동안은 찾은 자료 원문으로 답해요/)).toBeInTheDocument();
   });
 
   it("검색 테스트가 생성 결과(모델·시간·처리)를 보여준다", async () => {
@@ -594,5 +594,22 @@ describe("생성형 답변 (E-F)", () => {
     await userEvent.click(screen.getByRole("button", { name: "검색" }));
     expect(await screen.findByText("생성형 답변: qwen3-8b · 812ms · 자료에 없는 숫자가 있어 버리고 답하지 않아요")).toBeInTheDocument();
     expect(screen.getByText("답하지 않아요 (폴백으로 가요)")).toBeInTheDocument();
+  });
+
+  it("LLM이 제때 답하지 않으면 찾은 자료 원문으로 답한다고 보여준다", async () => {
+    kbEngine({
+      versions: () => ({ body: { bot: "sample", live: null, versions: [VERSION] } }),
+      search: () => ({ body: {
+        bot: "sample", version: VERSION.version, judge: "cosine", threshold: 0.5, exact: false,
+        answer: { text: "평일 9시부터 6시까지예요.", replies: [], items: ["faq_1"] }, candidates: [],
+        generated: { model: "qwen3-8b", ms: 3500, used: ["faq_1"], outcome: "timeout" },
+      } }),
+    });
+    renderKnowledge();
+    await userEvent.click(screen.getByRole("button", { name: "검색 테스트" }));
+    await userEvent.type(await screen.findByLabelText("검색어"), "영업 시간");
+    await userEvent.click(screen.getByRole("button", { name: "검색" }));
+    expect(await screen.findByText("생성형 답변: qwen3-8b · 3500ms · 시간 안에 오지 않아 찾은 자료 원문으로 답해요")).toBeInTheDocument();
+    expect(screen.getByText("평일 9시부터 6시까지예요.")).toBeInTheDocument();
   });
 });

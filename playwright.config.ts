@@ -7,6 +7,7 @@ const ENGINE_DIR = process.env.ENGINE_DIR ?? "engine";
 const ENGINE_PORT = 8765;
 const APP_PORT = 5179;
 const SKILL_PORT = 8799;
+const LLM_PORT = 8798;
 const ARTIFACTS = resolve(".e2e/artifacts"); // here, not in the engine checkout
 
 export default defineConfig({
@@ -26,9 +27,17 @@ export default defineConfig({
       env: { SKILL_PORT: String(SKILL_PORT) },
     },
     {
+      // a test LLM (OpenAI-compatible) for knowledge bases with 생성형 답변
+      command: `node e2e/llm-server.mjs`,
+      url: `http://127.0.0.1:${LLM_PORT}/healthz`,
+      timeout: 30_000,
+      reuseExistingServer: false,
+      env: { LLM_PORT: String(LLM_PORT) },
+    },
+    {
       // a fresh in-memory repository and a scratch artifacts directory on every run
       command: `uv run --locked --directory ${ENGINE_DIR} python -m chatcore.api --bot bots/sample --embedder hashing --min-f1 0 --skill-allow-private `
-        + `--artifacts ${ARTIFACTS} --port ${ENGINE_PORT}`,
+        + `--llm-url http://127.0.0.1:${LLM_PORT} --llm-model e2e-llm --artifacts ${ARTIFACTS} --port ${ENGINE_PORT}`,
       url: `http://127.0.0.1:${ENGINE_PORT}/healthz`,
       timeout: 180_000,
       reuseExistingServer: false,

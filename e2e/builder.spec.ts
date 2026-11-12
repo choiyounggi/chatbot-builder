@@ -207,6 +207,48 @@ test("a document uploaded in the builder, indexed and deployed with the bot, ans
   expect(answer?.text).toContain("출처: center.md");
 });
 
+test("생성형 답변 turned on in the builder answers that question through the engine's LLM, with the source", async ({ page, request }) => {
+  // continues the test above: the document center.md is in the knowledge base and deployed
+  const engineUrl = "http://127.0.0.1:8765";
+  const question = "우산은 어디서 빌릴 수 있나요";
+  const generated = "안내해 드릴게요. 우산은 정문 안내 데스크에서 하루 동안 무료로 빌릴 수 있습니다."; // e2e/llm-server.mjs
+
+  await page.goto("/");
+  await page.getByRole("link", { name: "샘플 봇" }).click();
+  const menu = page.getByRole("navigation", { name: "봇 메뉴" });
+  await menu.getByRole("link", { name: "지식베이스" }).click();
+  await expect(page.getByText(/연결됨: e2e-llm \(\d+ms\)/)).toBeVisible();
+  const generate = page.getByLabel(/생성형 답변/);
+  await generate.click(); // the page applies edits through the query cache, a moment after the click
+  await expect(generate).toBeChecked();
+  await page.getByRole("button", { name: "지식베이스 저장" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "지식베이스를 저장했어요" })).toBeVisible();
+
+  await page.getByRole("button", { name: "버전", exact: true }).click();
+  await page.getByRole("button", { name: "색인 만들기" }).click();
+  await expect(page.getByText(/^v\d+ 색인 완료 · FAQ 0개 · 조각 2개$/)).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: "검색 테스트" }).click();
+  await page.locator("#kb-search-query").fill(question);
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByText(/^생성형 답변: e2e-llm · \d+ms · 생성한 답을 보여줘요$/)).toBeVisible();
+  await expect(page.getByText(generated).first()).toBeVisible();
+
+  await menu.getByRole("link", { name: "배포" }).click();
+  await page.getByRole("button", { name: "배포용 학습" }).click();
+  await expect(page.getByText(/학습을 마쳤어요 · macro-F1/)).toBeVisible({ timeout: 60_000 });
+  await page.locator("#deploy-kb").selectOption({ index: 1 }); // the newest index: the one with 생성형 답변
+  await expect(page.getByText(/^배포하면 지식베이스가 v\d+에서 v\d+\(으\)로 바뀌어요\.$/)).toBeVisible();
+  await page.getByRole("button", { name: "배포", exact: true }).click();
+  await expect(page.getByText(/^v\d+ 배포됨 · 지식베이스 v\d+$/)).toBeVisible();
+
+  const r = await request.post(`${engineUrl}/v1/bots/sample/sessions/e2e-kb-3/messages`, { data: { text: question } });
+  expect(r.ok()).toBe(true);
+  const [answer] = ((await r.json()) as { messages: { response: string; text: string }[] }).messages;
+  expect(answer?.response).toBe("knowledge");
+  expect(answer?.text).toBe(`${generated}\n\n출처: center.md`);
+});
+
 test("a bot made by copying, chatted with by a fixed script, shows exactly those numbers in 분석, and is deleted and restored", async ({ page, request }) => {
   const engineUrl = "http://127.0.0.1:8765";
   const botId = "e2e_stats";

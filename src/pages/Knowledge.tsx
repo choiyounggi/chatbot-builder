@@ -177,7 +177,7 @@ function GenerateField({ checked, disabled, onChange }: { checked: boolean; disa
     : llm.isError ? "LLM 연결을 확인하지 못했어요."
     : !llm.data.configured ? "이 엔진에는 LLM이 연결되어 있지 않아요. 켜 두어도 찾은 자료 원문으로 답해요."
     : llm.data.ok ? `연결됨: ${llm.data.model ?? ""} (${llm.data.ms ?? "?"}ms)`
-    : `LLM이 답하지 않아요: ${llm.data.error ?? "알 수 없는 오류"}. 그동안은 답하지 않고 폴백으로 가요.`;
+    : `LLM이 답하지 않아요: ${llm.data.error ?? "알 수 없는 오류"}. 그동안은 찾은 자료 원문으로 답해요.`;
   return (
     <div className="field">
       <label className="check">
@@ -187,7 +187,7 @@ function GenerateField({ checked, disabled, onChange }: { checked: boolean; disa
       </label>
       <p id="kb-generate-help" className="help">
         {disabled ? "즉문즉답형에서만 쓸 수 있어요. " : ""}
-        자료에 없는 숫자가 있거나 모델이 답할 수 없다고 하면 그 답은 버리고 폴백으로 가요. {status}
+        자료에 없는 숫자가 있거나 모델이 답할 수 없다고 하면 그 답은 버리고 폴백으로 가요. LLM이 제때 답하지 못하면 찾은 자료 원문으로 답해요. {status}
       </p>
     </div>
   );
