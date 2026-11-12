@@ -322,3 +322,39 @@ test("a bot made by copying, chatted with by a fixed script, shows exactly those
   await expect(page.getByText("‘통계 확인 봇’을(를) 되살렸어요")).toBeVisible();
   expect((await chat("u9", "안녕하세요")).ok()).toBe(true); // the deployed version answers again
 });
+
+test("웹 채팅: sites allowed in the builder can talk to the bot from a browser, others are refused", async ({ page, request }) => {
+  const engineUrl = "http://127.0.0.1:8765";
+  const tryFrom = (origin: string) => request.post(`${engineUrl}/v1/bots/sample/sessions/e2e-web-0/messages`,
+    { data: { text: "안녕" }, headers: { Origin: origin } });
+  // start from no saved settings (re-runnable on an engine that ran this before): every site is refused
+  expect((await request.put(`${engineUrl}/v1/builder/bots/sample/web`, { data: {} })).ok()).toBe(true);
+  expect((await tryFrom("https://shop.example")).status()).toBe(403);
+
+  await page.goto("/");
+  await page.getByRole("link", { name: "샘플 봇" }).click();
+  await page.getByRole("navigation", { name: "봇 메뉴" }).getByRole("link", { name: "웹 채팅" }).click();
+  const origins = page.getByLabel("허용 도메인");
+  await expect(origins).toHaveValue("");
+  await origins.fill("HTTPS://SHOP.EXAMPLE:443\nhttp://localhost:5173");
+  await page.getByLabel("채팅창 제목").fill("쇼핑 도우미");
+  await page.getByRole("button", { name: "웹 채팅 저장" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "저장했어요. 바로 적용돼요." })).toBeVisible();
+  await expect(origins).toHaveValue("https://shop.example\nhttp://localhost:5173");
+
+  await page.getByLabel("위젯 주소").fill("https://chat.example");
+  await page.getByLabel("엔진 주소").fill("https://api.example");
+  await expect(page.getByLabel("웹사이트 코드")).toHaveText(
+    '<script src="https://chat.example/chatbot.js" data-engine="https://api.example" data-bot="sample" async></script>');
+
+  // what a browser on each site would get (no deploy needed)
+  const allowed = await request.post(`${engineUrl}/v1/bots/sample/sessions/e2e-web-1/messages`,
+    { data: { text: "안녕" }, headers: { Origin: "https://shop.example" } });
+  expect(allowed.status()).toBe(200);
+  expect(allowed.headers()["access-control-allow-origin"]).toBe("https://shop.example");
+  const look = await request.get(`${engineUrl}/v1/bots/sample/web`, { headers: { Origin: "http://localhost:5173" } });
+  expect(await look.json()).toEqual({ bot: "sample", title: "쇼핑 도우미", color: "#2563EB", placeholder: "메시지를 입력하세요" });
+  const refused = await request.post(`${engineUrl}/v1/bots/sample/sessions/e2e-web-2/messages`,
+    { data: { text: "안녕" }, headers: { Origin: "https://evil.example" } });
+  expect(refused.status()).toBe(403);
+});

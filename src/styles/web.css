@@ -1,0 +1,18 @@
+/* 웹 채팅 — tokens only (src/styles/tokens.css). */
+
+.web-form { display: grid; gap: var(--space-sm); max-width: 44rem; }
+.web-fields { display: grid; gap: var(--space-sm); margin: 0; padding: 0; border: 0; min-width: 0; }
+.web-color { display: flex; align-items: center; gap: var(--space-xs); }
+.web-color input[type="color"] {
+  width: 3rem; height: 2.25rem; padding: 0; border: var(--rule-width) solid var(--color-rule);
+  border-radius: var(--radius-md); background: transparent; cursor: pointer;
+}
+.web-problems { margin: 0; padding-left: 1.25rem; }
+.web-embed { display: grid; gap: var(--space-xs); max-width: 44rem; margin-top: var(--space-lg); }
+.web-embed h3 { margin: var(--space-sm) 0 0; }
+.copy { display: grid; gap: var(--space-2xs); justify-items: start; }
+.copy__text {
+  width: 100%; box-sizing: border-box; margin: 0; padding: var(--space-sm);
+  border: var(--rule-width) solid var(--color-rule); border-radius: var(--radius-md); background: var(--color-paper-2);
+  font: var(--text-xs) / 1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere;
+}
