@@ -98,6 +98,9 @@ function DailyChart({ days }: { days: AnalyticsDayOut[] }) {
         <path d={pathOf("sessions")} className="analytics-line analytics-line--sessions" />
         <path d={pathOf("users")} className="analytics-line analytics-line--users" />
         {days.map((d, i) => <circle key={d.date} cx={x(i)} cy={y(d.users)} r={2.5} className="analytics-dot--users" />)}
+        {days.length === 1 && days.map((d, i) => ( // one day: a line has nothing to join, so mark sessions too
+          <circle key={`s-${d.date}`} cx={x(i)} cy={y(d.sessions)} r={2.5} className="analytics-dot--sessions" />
+        ))}
       </svg>
       <ul className="analytics-legend">
         <li><span className="analytics-swatch analytics-swatch--users" />사용자</li>
@@ -192,7 +195,8 @@ function RetentionSection({ retention }: { retention: AnalyticsRetentionOut[] })
 }
 
 function Report({ data }: { data: AnalyticsOut }) {
-  if (data.totals.messages === 0) {
+  const t = data.totals; // a welcome block opened with no message still counts as a block call
+  if (t.messages + t.block_calls + t.fallbacks + t.knowledge_answers === 0) {
     return <div className="empty"><p>이 기간에는 사용자 대화가 없어요.</p></div>;
   }
   return (

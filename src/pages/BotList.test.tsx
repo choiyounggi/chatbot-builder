@@ -218,3 +218,34 @@ describe("deletion and restore", () => {
     expect(restoreCalls).toHaveLength(1);
   });
 });
+
+
+describe("creating a bot: review fixes", () => {
+  it("trims the name, refuses a blank one, and stops at 100 characters", async () => {
+    const fetchMock = fakeEngine({
+      "GET /v1/builder/bots": () => ({ body: { bots: [] } }),
+      "POST /v1/builder/bots": () => ({ status: 201, body: { bot: "shop3", revision: 1 } }),
+    });
+    renderAt("/");
+    await openForm();
+    await fillBase("shop3", "   ");
+    expect(screen.getByText("이름을 써 주세요(빈칸만으로는 안 돼요).")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "만들기" })).toBeDisabled();
+    expect(screen.getByLabelText("이름")).toHaveAttribute("maxLength", "100");
+    await userEvent.type(screen.getByLabelText("이름"), "샵봇 ");
+    await userEvent.click(screen.getByRole("button", { name: "만들기" }));
+    await waitFor(() => expect(postedBody(fetchMock)).toEqual({ id: "shop3", label: "샵봇" }));
+  });
+
+  it("explains the engine's own 422 (a list of field problems) in Korean", async () => {
+    fakeEngine({
+      "GET /v1/builder/bots": () => ({ body: { bots: [] } }),
+      "POST /v1/builder/bots": () => ({ status: 422, body: { detail: [{ type: "string_too_long", loc: ["body", "label"], msg: "String should have at most 100 characters" }] } }),
+    });
+    renderAt("/");
+    await openForm();
+    await fillBase("badlabel", "이름");
+    await userEvent.click(screen.getByRole("button", { name: "만들기" }));
+    expect(await screen.findByText("봇 ID와 이름을 확인해 주세요.")).toBeInTheDocument();
+  });
+});

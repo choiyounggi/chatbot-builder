@@ -253,9 +253,18 @@ test("a bot made by copying, chatted with by a fixed script, shows exactly those
   await expect(tile("블록 호출")).toHaveText("4");
   await expect(tile("폴백")).toHaveText("1");
   const ranking = page.locator("section", { has: page.getByRole("heading", { name: "블록 순위" }) }).locator("tbody tr");
-  await expect(ranking).toHaveCount(3);
-  await expect(ranking.nth(0)).toContainText("인사");
-  await expect(ranking.nth(0)).toContainText("2");
+  await expect(ranking).toHaveCount(3); // most calls first; ties by block id (current_time < thank)
+  for (const [i, [label, calls, share]] of [["인사", "2", "50%"], ["현재 시각", "1", "25%"], ["감사 답례", "1", "25%"]].entries()) {
+    await expect(ranking.nth(i).locator("td[data-label='블록']")).toContainText(label);
+    await expect(ranking.nth(i).locator("td[data-label='호출']")).toHaveText(calls);
+    await expect(ranking.nth(i).locator("td[data-label='비중']")).toHaveText(share);
+  }
+  // today's row of the daily table (Korean day) holds the same numbers as the tiles
+  const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const day = page.locator("section", { has: page.getByRole("heading", { name: "일별" }) }).locator("tbody tr", { hasText: today });
+  for (const [field, value] of [["사용자", "3"], ["신규", "3"], ["재방문", "0"], ["세션", "3"], ["말", "5"], ["블록 호출", "4"], ["폴백", "1"]]) {
+    await expect(day.locator(`td[data-label='${field}']`)).toHaveText(value);
+  }
 
   await menu.getByRole("link", { name: "설정" }).click();
   await page.locator("#delete-confirm-id").fill(botId);

@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { deleteBot } from "../api/bots";
@@ -11,10 +11,15 @@ import { DeployState } from "./BotList";
 
 function DeleteBotSection({ botId, label }: { botId: string; label: string }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [confirmId, setConfirmId] = useState("");
   const del = useMutation({
     mutationFn: () => deleteBot(botId),
     onSuccess: (deleted) => {
+      // forget what this page knew about the bot (its draft, versions ...: Back must not show it as editable)
+      // and the bot list, which still shows it as an ordinary bot
+      queryClient.removeQueries({ predicate: (q) => q.queryKey[1] === botId });
+      void queryClient.invalidateQueries({ queryKey: ["bots"] });
       void navigate("/", {
         state: { notice: `‘${label || botId}’ 봇을 삭제했어요. ${formatDateTime(deleted.purge_after)}에 영구 삭제돼요.` },
       });

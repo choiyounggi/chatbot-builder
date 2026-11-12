@@ -36,10 +36,13 @@ function NewBotForm({ bots, onCreated, onCancel }: { bots: BotSummary[]; onCreat
   const queryClient = useQueryClient();
   const copyCandidates = bots.filter((b) => !b.deletion);
   const idError = id.length > 0 ? validateBotId(id) : null;
-  const canSubmit = id.length > 0 && !idError && label.length > 0 && (mode === "empty" || copyFrom.length > 0);
+  const name = label.trim();
+  const labelError = label.length > 0 && !name ? "이름을 써 주세요(빈칸만으로는 안 돼요)."
+    : name.length > 100 ? "이름은 100자까지예요." : null;
+  const canSubmit = id.length > 0 && !idError && name.length > 0 && !labelError && (mode === "empty" || copyFrom.length > 0);
 
   const create = useMutation({
-    mutationFn: () => createBot(id, label, mode === "copy" ? copyFrom : undefined),
+    mutationFn: () => createBot(id, name, mode === "copy" ? copyFrom : undefined),
     onSuccess: (created) => {
       void queryClient.invalidateQueries({ queryKey: ["bots"] });
       onCreated(created.bot);
@@ -50,7 +53,9 @@ function NewBotForm({ bots, onCreated, onCancel }: { bots: BotSummary[]; onCreat
     if (!(create.error instanceof ApiError)) return null;
     if (create.error.status === 409) return "이미 있는 ID예요(삭제 대기 중인 봇도 포함)";
     if (create.error.status === 404) return "복사할 봇의 초안이 없어요";
-    if (create.error.status === 422) return create.error.message;
+    if (create.error.status === 422) {
+      return create.error.message === "HTTP 422" ? "봇 ID와 이름을 확인해 주세요." : create.error.message;
+    }
     return null;
   })();
 
@@ -66,7 +71,9 @@ function NewBotForm({ bots, onCreated, onCancel }: { bots: BotSummary[]; onCreat
       </div>
       <div className="field">
         <label htmlFor="new-bot-label">이름</label>
-        <input id="new-bot-label" className="input" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <input id="new-bot-label" className="input" value={label} maxLength={100} aria-invalid={!!labelError}
+               aria-describedby={labelError ? "new-bot-label-help" : undefined} onChange={(e) => setLabel(e.target.value)} />
+        {labelError && <p id="new-bot-label-help" className="help" data-tone="error">{labelError}</p>}
       </div>
       <fieldset className="group">
         <legend>시작 방법</legend>

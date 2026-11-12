@@ -78,3 +78,21 @@ describe("formatPercent", () => {
     expect(formatPercent(1)).toBe("100%");
   });
 });
+
+describe("리뷰 후 고친 것", () => {
+  it("엔진이 받는 2000~2100년 밖의 날짜는 보내기 전에 막아요(경계는 통과)", () => {
+    expect(rangeProblem("1999-12-31", "2000-01-05")).toMatch(/2000년 1월 1일부터/);
+    expect(rangeProblem("2000-01-01", "2000-01-05")).toBeNull();
+    expect(rangeProblem("2100-12-01", "2100-12-31")).toBeNull();
+    expect(rangeProblem("2100-12-31", "2101-01-01")).toMatch(/2100년 12월 31일/);
+    expect(rangeProblem("0002-11-05", "0002-11-06")).toMatch(/2000년/); // a date input mid-typing
+  });
+
+  it("0이 아닌 아주 작은 비율을 0%로, 전부가 아닌 비율을 100%로 보이지 않아요", () => {
+    expect(formatPercent(1 / 300)).toBe("1% 미만");
+    expect(formatPercent(199 / 200)).toBe("99% 초과");
+    expect(formatPercent(0)).toBe("0%");
+    expect(formatPercent(1)).toBe("100%");
+    expect(formatPercent(0.005)).toBe("1%");
+  });
+});

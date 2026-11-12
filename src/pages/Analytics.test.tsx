@@ -258,3 +258,23 @@ describe("오류", () => {
     expect(await screen.findByRole("heading", { name: "요청을 처리하지 못했어요" })).toBeInTheDocument();
   });
 });
+
+describe("리뷰 후 고친 것", () => {
+  it("말은 없어도 웰컴 블록이 열렸으면 블록 순위를 보여줘요", async () => {
+    vi.setSystemTime(NOW);
+    engine({
+      analytics: {
+        body: {
+          ...SAMPLE_REPORT,
+          totals: { users: 0, new_users: 0, returning_users: 0, sessions: 0, messages: 0, block_calls: 3, fallbacks: 0, knowledge_answers: 0, knowledge_rate: null },
+          days: [{ date: "2026-11-12", users: 0, new_users: 0, returning_users: 0, sessions: 0, messages: 0, block_calls: 3, fallbacks: 0, knowledge_answers: 0 }],
+          blocks: [{ block: "welcome", label: "웰컴", calls: 3 }], retention: [],
+        },
+      },
+    });
+    renderAnalytics();
+    expect(await screen.findByText("웰컴")).toBeInTheDocument();
+    expect(screen.queryByText("이 기간에는 사용자 대화가 없어요.")).not.toBeInTheDocument();
+    expect(document.querySelectorAll(".analytics-dot--sessions")).toHaveLength(1); // one day: sessions get a dot too
+  });
+});
