@@ -43,6 +43,7 @@ function kbEngine(options: {
   search?: Handler;
   buildResult?: Record<string, unknown>;
   buildError?: Record<string, unknown>;
+  llm?: Handler;
 } = {}) {
   const puts: { etag: string | null; body: Record<string, unknown> }[] = [];
   const uploads: { contentType: string | null; body: string }[] = [];
@@ -65,6 +66,7 @@ function kbEngine(options: {
       return options.extract ? await options.extract(init) : { body: { text: "추출된 문서 내용이에요." } };
     },
     [`GET ${B}/knowledge/versions`]: options.versions ?? (() => ({ body: { bot: "sample", live: null, versions: [] } })),
+    "GET /v1/builder/llm": options.llm ?? (() => ({ body: { configured: false, model: null, ok: null, ms: null, error: null } })),
     [`POST ${B}/knowledge/search`]: async (init) => {
       const body = JSON.parse(String(init.body)) as { query: string; version?: string };
       searches.push(body);
@@ -541,5 +543,56 @@ describe("엔진 한도", () => {
     await userEvent.click(await screen.findByText("안내문"));
     expect(screen.getByLabelText("이름")).toHaveAttribute("maxLength", "200");
     expect(screen.getByLabelText("본문")).toHaveAttribute("maxLength", "200000");
+  });
+});
+
+
+describe("생성형 답변 (E-F)", () => {
+  it("켜면 settings.generate를 보내고, 끄면 키를 지워 원래대로 돌아간다", async () => {
+    const { puts } = kbEngine({ llm: () => ({ body: { configured: true, model: "qwen3-8b", ok: true, ms: 420, error: null } }) });
+    renderKnowledge();
+    const toggle = await screen.findByLabelText(/생성형 답변/);
+    expect(await screen.findByText(/연결됨: qwen3-8b \(420ms\)/)).toBeInTheDocument();
+    await userEvent.click(toggle);
+    await userEvent.click(screen.getByLabelText(/생성형 답변/));
+    expect(screen.getByText("지식베이스 변경 없음")).toBeInTheDocument(); // on then off before saving: nothing changed
+    await userEvent.click(screen.getByLabelText(/생성형 답변/));
+    await userEvent.click(screen.getByRole("button", { name: "지식베이스 저장" }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect((puts[0]?.body.settings as Record<string, unknown>).generate).toBe(true);
+  });
+
+  it("답안 추천형에서는 끌 수 없게 꺼져 있다", async () => {
+    kbEngine({ draft: () => ({ body: { ...structuredClone(DOC), settings: { mode: "suggest", suggest_text: "골라 주세요" } }, headers: { ETag: '"1"' } }) });
+    renderKnowledge();
+    expect(await screen.findByLabelText(/생성형 답변/)).toBeDisabled();
+    expect(screen.getByText(/즉문즉답형에서만 쓸 수 있어요/)).toBeInTheDocument();
+  });
+
+  it("LLM이 없거나 답하지 않으면 그렇게 알린다", async () => {
+    kbEngine();
+    const first = renderKnowledge();
+    expect(await screen.findByText(/이 엔진에는 LLM이 연결되어 있지 않아요/)).toBeInTheDocument();
+    first.unmount();
+    vi.unstubAllGlobals();
+    kbEngine({ llm: () => ({ body: { configured: true, model: "qwen3-8b", ok: false, ms: null, error: "cannot reach the LLM server" } }) });
+    renderKnowledge();
+    expect(await screen.findByText(/LLM이 답하지 않아요: cannot reach the LLM server/)).toBeInTheDocument();
+  });
+
+  it("검색 테스트가 생성 결과(모델·시간·처리)를 보여준다", async () => {
+    kbEngine({
+      versions: () => ({ body: { bot: "sample", live: null, versions: [VERSION] } }),
+      search: () => ({ body: {
+        bot: "sample", version: VERSION.version, judge: "cosine", threshold: 0.5, exact: false, answer: null, candidates: [],
+        generated: { model: "qwen3-8b", ms: 812, used: ["faq_1"], outcome: "unsupported_number" },
+      } }),
+    });
+    renderKnowledge();
+    await userEvent.click(screen.getByRole("button", { name: "검색 테스트" }));
+    await userEvent.type(await screen.findByLabelText("검색어"), "영업 시간");
+    await userEvent.click(screen.getByRole("button", { name: "검색" }));
+    expect(await screen.findByText("생성형 답변: qwen3-8b · 812ms · 자료에 없는 숫자가 있어 버리고 답하지 않아요")).toBeInTheDocument();
+    expect(screen.getByText("답하지 않아요 (폴백으로 가요)")).toBeInTheDocument();
   });
 });

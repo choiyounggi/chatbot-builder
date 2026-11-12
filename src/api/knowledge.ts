@@ -110,3 +110,23 @@ export function kbBuildError(error: Record<string, unknown> | null | undefined):
   if (error?.kind === "invalid_draft") return { message: "지식베이스에 고칠 곳이 있어 색인을 만들지 못했어요.", errors };
   return { message: "색인을 만들지 못했어요. 잠시 후 다시 시도해 주세요.", errors };
 }
+
+export type LlmStatus = S["LlmOut"];
+export type KbGenerated = S["KbGeneratedOut"];
+
+/** Whether the engine has an LLM for generated answers and whether it answers now (a short test call). */
+export async function llmStatus(): Promise<LlmStatus> {
+  const res = await request("/v1/builder/llm");
+  return (await res.json()) as LlmStatus;
+}
+
+/** What happened to a generation attempt, in Korean. */
+export const GENERATION_OUTCOME: Record<KbGenerated["outcome"], string> = {
+  generated: "생성한 답을 보여줘요",
+  no_answer: "모델이 자료로 답할 수 없다고 해서 답하지 않아요",
+  unsupported_number: "자료에 없는 숫자가 있어 버리고 답하지 않아요",
+  too_long: "너무 길어 버리고 답하지 않아요",
+  empty: "빈 답이라 버리고 답하지 않아요",
+  timeout: "시간 안에 오지 않아 답하지 않아요",
+  error: "LLM 서버 오류로 답하지 않아요",
+};

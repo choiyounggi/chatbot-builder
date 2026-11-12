@@ -6,10 +6,13 @@ import type { FaqEntry, KbDocument, KnowledgeDoc } from "../api/knowledge";
 export const SUGGEST_TEXT_DEFAULT = "이런 답을 찾았어요. 골라 주세요.";
 
 export type KbSettingsDoc = NonNullable<KnowledgeDoc["settings"]>;
+/** Settings as stored: keys left at the engine's default may be absent (`generate` is removed when off). */
+type StoredSettings = Omit<KbSettingsDoc, "generate"> & { generate?: boolean };
+const DEFAULT_SETTINGS: StoredSettings = { mode: "instant", suggest_text: SUGGEST_TEXT_DEFAULT };
 
 /** The empty draft a bot starts from before anything is saved (engine defaults). */
 export function emptyKb(): KnowledgeDoc {
-  return { faq: [], documents: [], settings: { mode: "instant", suggest_text: SUGGEST_TEXT_DEFAULT } };
+  return { faq: [], documents: [], settings: { ...DEFAULT_SETTINGS } as KbSettingsDoc };
 }
 
 /** Deep-equal regardless of key order (a round trip through the engine can reorder keys). */
@@ -78,9 +81,12 @@ export function writeDocument(kb: KnowledgeDoc, id: string, patch: Partial<KbDoc
   return { ...kb, documents: (kb.documents ?? []).map((d) => (d.id === id ? { ...d, ...patch } : d)) };
 }
 
+/** Change settings; turning `generate` off removes the key (the engine's default), so switching it on and
+ * off again leaves the draft exactly as it was. */
 export function writeSettings(kb: KnowledgeDoc, patch: Partial<KbSettingsDoc>): KnowledgeDoc {
-  const settings = kb.settings ?? { mode: "instant", suggest_text: SUGGEST_TEXT_DEFAULT };
-  return { ...kb, settings: { ...settings, ...patch } };
+  const settings: StoredSettings = { ...(kb.settings ?? DEFAULT_SETTINGS), ...patch };
+  if (settings.generate === false) delete settings.generate;
+  return { ...kb, settings: settings as KbSettingsDoc };
 }
 
 /** The first non-blank line of a document's text, for a list preview (never more than 80 characters). */
