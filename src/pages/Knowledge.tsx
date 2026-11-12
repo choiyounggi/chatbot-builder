@@ -8,7 +8,7 @@ import { formatDateTime } from "../api/deploy";
 import {
   extractFile, fileType, getKbDraft, kbBuildError, kbEntries, type KbDocument, type KbDraft, type KbEntry,
   type KbSaved, type KbSearch, type KnowledgeDoc, listKbVersions, parseKbBuildResult, saveKbDraft, searchKb,
-  startKbBuild,
+  startKbBuild, GENERATION_OUTCOME, llmStatus,
 } from "../api/knowledge";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useDraft } from "../draft/DraftContext";
@@ -170,8 +170,36 @@ function FaqTab({ kb, onChange }: { kb: KnowledgeDoc; onChange: Change }) {
   );
 }
 
+/** 생성형 답변: the engine's LLM writes a short answer from the passage that passed (즉문즉답형 only). */
+function GenerateField({ checked, disabled, onChange }: { checked: boolean; disabled: boolean; onChange: (on: boolean) => void }) {
+  // asked again when the window regains focus and on 다시 확인: a server that stopped must not stay "연결됨"
+  const llm = useQuery({ queryKey: ["llm"], queryFn: llmStatus, staleTime: 60_000, refetchOnWindowFocus: true });
+  const status = llm.isPending ? "LLM 연결을 확인하는 중…"
+    : llm.isError ? "LLM 연결을 확인하지 못했어요."
+    : !llm.data.configured ? "이 엔진에는 LLM이 연결되어 있지 않아요. 켜 두어도 찾은 자료 원문으로 답해요."
+    : llm.data.ok ? `연결됨: ${llm.data.model ?? ""} (${llm.data.ms ?? "?"}ms)`
+    : `LLM이 답하지 않아요: ${llm.data.error ?? "알 수 없는 오류"}. 그동안은 찾은 자료 원문으로 답해요.`;
+  return (
+    <div className="field">
+      <label className="check">
+        <input type="checkbox" checked={checked && !disabled} disabled={disabled} onChange={(e) => onChange(e.target.checked)}
+               aria-describedby="kb-generate-help" />
+        생성형 답변 (찾은 자료로 LLM이 짧게 답해요)
+      </label>
+      <p id="kb-generate-help" className="help">
+        {disabled ? "즉문즉답형에서만 쓸 수 있어요. " : ""}
+        자료에 없는 숫자가 있거나 모델이 답할 수 없다고 하면 그 답은 버리고 폴백으로 가요. LLM이 제때 답하지 못하면 찾은 자료 원문으로 답해요. {status}
+      </p>
+      <button type="button" className="btn" disabled={llm.isFetching} onClick={() => void llm.refetch()}>
+        {llm.isFetching ? "LLM 연결 확인 중…" : "LLM 연결 다시 확인"}
+      </button>
+    </div>
+  );
+}
+
 function SettingsFields({ kb, onChange }: { kb: KnowledgeDoc; onChange: Change }) {
-  const settings = kb.settings ?? { mode: "instant" as const, suggest_text: SUGGEST_TEXT_DEFAULT };
+  const settings: { mode: "instant" | "suggest"; suggest_text: string; generate?: boolean } =
+    kb.settings ?? { mode: "instant", suggest_text: SUGGEST_TEXT_DEFAULT };
   return (
     <fieldset className="group">
       <legend>응답 방식</legend>
@@ -185,6 +213,8 @@ function SettingsFields({ kb, onChange }: { kb: KnowledgeDoc; onChange: Change }
                onChange={() => onChange((d) => writeSettings(d, { mode: "suggest" }))} />
         답안 추천형 (알맞은 답 최대 3개를 버튼으로)
       </label>
+      <GenerateField checked={settings.generate === true} disabled={settings.mode !== "instant"}
+                     onChange={(on) => onChange((d) => writeSettings(d, { generate: on }))} />
       {settings.mode === "suggest" && (
         <div className="field">
           <label htmlFor="kb-suggest-text">안내 문구</label>
@@ -370,6 +400,9 @@ function SearchResult({ result }: { result: KbSearch }) {
           )}
         </div>
       ) : <p className="status">답하지 않아요 (폴백으로 가요)</p>}
+      {result.generated && (
+        <p className="status">{`생성형 답변: ${result.generated.model} · ${result.generated.ms}ms · ${GENERATION_OUTCOME[result.generated.outcome]}`}</p>
+      )}
       <p className="status">{`판단: ${result.judge} · 기준 ${result.threshold.toFixed(2)}`}</p>
       <table className="table stack-table">
         <thead>

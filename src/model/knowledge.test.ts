@@ -8,7 +8,7 @@ import {
 const base = (): KnowledgeDoc => ({
   faq: [{ id: "faq_1", question: "영업 시간이 어떻게 되나요?", answer: "평일 9시부터 6시까지예요." }],
   documents: [{ id: "doc_1", name: "안내문", text: "# 안내문\n\n문의는 이메일로 해 주세요." }],
-  settings: { mode: "instant", suggest_text: "이런 답을 찾았어요. 골라 주세요." },
+  settings: { mode: "instant", suggest_text: "이런 답을 찾았어요. 골라 주세요." } as KnowledgeDoc["settings"],
 });
 
 describe("emptyKb / sameKb", () => {
@@ -137,5 +137,21 @@ describe("review fixes: messages and limits", () => {
     expect(documentWarning({ id: "d", name: " ", text: "" })).toMatch(/이름/);
     expect(documentWarning({ id: "d", name: "a", text: " " })).toMatch(/본문/);
     expect(documentWarning({ id: "d", name: "a", text: "b" })).toBeNull();
+  });
+});
+
+
+describe("writeSettings: generate (E-F)", () => {
+  it("adds generate when on and removes the key when off, so on-then-off is the same draft", () => {
+    const on = writeSettings(base(), { generate: true });
+    expect(on.settings?.generate).toBe(true);
+    const off = writeSettings(on, { generate: false });
+    expect(off.settings && "generate" in off.settings).toBe(false);
+    expect(sameKb(off, base())).toBe(true);
+  });
+
+  it("keeps the other settings, and starts from the engine's defaults without settings", () => {
+    const on = writeSettings({ ...base(), settings: undefined }, { generate: true });
+    expect(on.settings).toEqual({ mode: "instant", suggest_text: "이런 답을 찾았어요. 골라 주세요.", generate: true });
   });
 });
