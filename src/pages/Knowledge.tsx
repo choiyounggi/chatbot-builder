@@ -15,7 +15,8 @@ import { Proposals } from "../components/Proposals";
 import { useDraft } from "../draft/DraftContext";
 import {
   addDocument, addFaq, documentWarning, duplicateFaqIds, emptyKb, faqWarning, firstLine, kbProblem, LIMITS,
-  removeDocument, removeFaq, sameKb, SUGGEST_TEXT_DEFAULT, uploadReason, writeDocument, writeFaq, writeSettings,
+  removeDocument, removeFaq, sameKb, SUGGEST_TEXT_DEFAULT, uploadReason, withSimilar, writeDocument, writeFaq, writeSettings,
+  writeSimilar,
 } from "../model/knowledge";
 
 type Tab = "faq" | "docs" | "search" | "versions";
@@ -141,11 +142,15 @@ function SimilarQuestions({ botId, faq, n, blocked, onChange }: {
 }) {
   const similar = faq.similar ?? [];
   const [text, setText] = useState("");
-  const set = (next: string[]) => onChange((d) => writeFaq(d, faq.id, { similar: next }));
-  const fresh = (t: string) => t.trim() && t.trim() !== faq.question.trim() && !similar.includes(t.trim());
-  const add = (texts: string[]) => set([...similar, ...texts.map((t) => t.trim()).filter((t, i, all) => fresh(t) && all.indexOf(t) === i)]
-    .slice(0, LIMITS.similar));
-  const full = similar.length >= LIMITS.similar;
+  const [note, setNote] = useState("");
+  const set = (next: string[]) => onChange((d) => writeSimilar(d, faq.id, next));
+  const add = (texts: string[]) => {
+    const out = withSimilar(faq, texts);
+    set(out.similar);
+    setNote(out.skipped ? `${out.skipped}개는 이미 있거나 ${LIMITS.similar}개를 넘어서 넣지 않았어요.` : "");
+  };
+  const fresh = text.trim() !== "" && withSimilar(faq, [text]).added === 1;
+  const room = LIMITS.similar - similar.length;
   return (
     <details className="similar">
       <summary>{`비슷한 질문 ${similar.length}개`}</summary>
@@ -155,18 +160,20 @@ function SimilarQuestions({ botId, faq, n, blocked, onChange }: {
           <li key={i}>
             <span>{q}</span>
             <button type="button" className="btn btn--quiet" aria-label={`비슷한 질문 "${q}" 삭제`}
-                    onClick={() => set(similar.filter((_, j) => j !== i))}>삭제</button>
+                    onClick={() => { setNote(""); set(similar.filter((_, j) => j !== i)); }}>삭제</button>
           </li>
         ))}
       </ul>
-      <form className="inline-add" onSubmit={(e) => { e.preventDefault(); if (fresh(text)) add([text]); setText(""); }}>
+      <form className="inline-add" onSubmit={(e) => { e.preventDefault(); if (fresh) add([text]); setText(""); }}>
         <label className="visually-hidden" htmlFor={`faq-${faq.id}-similar`}>{`FAQ ${n} 비슷한 질문 추가`}</label>
-        <input id={`faq-${faq.id}-similar`} className="input" value={text} maxLength={LIMITS.question} disabled={full}
+        <input id={`faq-${faq.id}-similar`} className="input" value={text} maxLength={LIMITS.question} disabled={room <= 0}
                onChange={(e) => setText(e.target.value)} placeholder="비슷한 질문을 입력하고 Enter" />
-        <button type="submit" className="btn" disabled={full || !fresh(text)}>추가</button>
+        <button type="submit" className="btn" disabled={room <= 0 || !fresh}>추가</button>
       </form>
-      {full ? <p className="help" data-tone="warn">비슷한 질문은 {LIMITS.similar}개까지예요.</p>
-        : <Proposals botId={botId} kind="faq" target={faq.id} what="비슷한 질문" blocked={blocked} onAdd={add} />}
+      {note && <p className="help" role="status">{note}</p>}
+      {room <= 0 ? <p className="help" data-tone="warn">비슷한 질문은 {LIMITS.similar}개까지예요.</p>
+        : <Proposals key={`${faq.id}:${faq.question}`} botId={botId} kind="faq" target={faq.id} what="비슷한 질문"
+                     scope={`FAQ ${n}`} room={room} blocked={blocked} onAdd={add} />}
     </details>
   );
 }

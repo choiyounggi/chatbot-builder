@@ -8,3 +8,4 @@
 .proposals__list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); padding: var(--space-2xs) 0; border-bottom: var(--rule-width) solid var(--color-rule); }
 .proposals__list li[data-status="duplicate"], .proposals__list li[data-status="invalid"] { opacity: 0.6; }
 .proposals__text { overflow-wrap: anywhere; }
+.proposals__note { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); }

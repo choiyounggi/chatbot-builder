@@ -64,11 +64,42 @@ describe("Proposals", () => {
   it.each([
     [409, "this server has no LLM", "엔진에 LLM이 연결되어 있지 않아요"],
     [404, "the saved draft has no block 'weather'", "저장된 내용에 아직 없어요"],
-    [424, "the LLM did not answer: timeout", "LLM이 답하지 않았어요: the LLM did not answer: timeout"],
+    [424, "the LLM did not answer: timeout: no answer within 90s", "LLM이 답하지 않았어요 (timeout: no answer within 90s). 다시 해 보세요."],
   ])("an engine %i says what to do", async (status, detail, text) => {
     setup({ status, body: { detail } });
     await userEvent.click(screen.getByRole("button", { name: "LLM으로 발화 더 만들기" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(text);
+  });
+
+  it("an engine without the route (an older one) is not told to save first", async () => {
+    setup({ status: 404, body: { detail: "Not Found" } });
+    await userEvent.click(screen.getByRole("button", { name: "LLM으로 발화 더 만들기" }));
+    expect(await screen.findByText(/봇이 없거나 아직 초안이 없어요/)).toBeInTheDocument();
+    expect(screen.queryByText(/먼저 저장해 주세요/)).not.toBeInTheDocument();
+  });
+
+  it("says it is working, links each warning to its checkbox, and gives focus back after adding", async () => {
+    setup();
+    const start = screen.getByRole("button", { name: "LLM으로 발화 더 만들기" });
+    await userEvent.click(start);
+    const list = await screen.findByRole("list", { name: "LLM이 만든 발화" });
+    const conflictBox = within(list).getByText("지금 몇 시야").closest("label")?.querySelector("input") as HTMLInputElement;
+    expect(conflictBox).toHaveAccessibleDescription(/헷갈려요: ‘현재 시각’ 블록으로 판단돼요/);
+    await userEvent.click(screen.getByRole("button", { name: "선택한 2개 추가" }));
+    expect(start).toHaveFocus();
+  });
+
+  it("does not add more than there is room for", async () => {
+    const onAdd = vi.fn();
+    fakeEngine({ "POST /v1/builder/bots/sample/augment": () => ({ body: { bot: "sample", kind: "faq", id: "f", model: "m", ms: 1, items: ITEMS } }) });
+    const client = createQueryClient();
+    render(<Providers client={client}><MemoryRouter>
+      <Proposals botId="sample" kind="faq" target="f" what="비슷한 질문" scope="FAQ 2" room={1} blocked={null} onAdd={onAdd} />
+    </MemoryRouter></Providers>);
+    await userEvent.click(screen.getByRole("button", { name: "FAQ 2 LLM으로 비슷한 질문 더 만들기" }));
+    expect(await screen.findByText("1개까지 더 넣을 수 있어요. 선택을 줄여 주세요.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "선택한 2개 추가" })).toBeDisabled();
+    expect(screen.getByLabelText("FAQ 2 개수")).toBeInTheDocument();
   });
 
   it("an answer with no sentences says so and closes", async () => {

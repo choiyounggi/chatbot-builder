@@ -63,7 +63,44 @@ export function faqWarning(f: FaqEntry, duplicates: Set<string>): string | null 
   if (duplicates.has(f.id)) return "같은 질문이 이미 있어요";
   if (!f.question.trim()) return "질문을 입력해 주세요";
   if (!f.answer.trim()) return "답을 입력해 주세요";
+  const keys = [f.question, ...(f.similar ?? [])].map(bare);
+  if (new Set(keys).size !== keys.length) return "비슷한 질문이 질문이나 다른 비슷한 질문과 같아요";
   return null;
+}
+
+const PUNCT_EDGES = /^[\s.,!?~…·'"()[\]]+|[\s.,!?~…·'"()[\]]+$/g;
+
+/** The engine's sameness rule for questions (chatcore/nlu/entities.py `bare`): NFKC, spaces collapsed,
+ * punctuation at the ends dropped. Case is kept. */
+export function bare(text: string): string {
+  return text.normalize("NFKC").replace(/\s+/g, " ").trim().replace(PUNCT_EDGES, "");
+}
+
+/** `texts` added to an FAQ's similar questions: each trimmed, skipped when blank, the same as the question
+ * or one already there (by `bare`), or past LIMITS.similar. */
+export function withSimilar(f: FaqEntry, texts: string[]): { similar: string[]; added: number; skipped: number } {
+  const similar = [...(f.similar ?? [])];
+  const seen = new Set([f.question, ...similar].map(bare));
+  let added = 0;
+  for (const raw of texts) {
+    const text = raw.trim();
+    if (!text || seen.has(bare(text)) || similar.length >= LIMITS.similar) continue;
+    seen.add(bare(text));
+    similar.push(text);
+    added += 1;
+  }
+  return { similar, added, skipped: texts.length - added };
+}
+
+/** An FAQ's similar questions set; none left removes the key (an untouched FAQ stays the same document). */
+export function writeSimilar(kb: KnowledgeDoc, id: string, similar: string[]): KnowledgeDoc {
+  return { ...kb, faq: (kb.faq ?? []).map((f) => {
+    if (f.id !== id) return f;
+    if (similar.length > 0) return { ...f, similar };
+    const rest = { ...f };
+    delete rest.similar;
+    return rest;
+  }) };
 }
 
 /** A new document with an id from `newId` (smallest unused `doc_<n>`). */

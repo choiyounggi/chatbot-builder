@@ -650,8 +650,8 @@ describe("비슷한 질문 (B10)", () => {
     renderKnowledge();
     await userEvent.click(await screen.findByText("비슷한 질문 0개"));
     const input = screen.getByLabelText("FAQ 1 비슷한 질문 추가");
-    await userEvent.type(input, "영업 시간이 어떻게 되나요?");
-    expect(screen.getByRole("button", { name: "추가" })).toBeDisabled(); // the question itself
+    await userEvent.type(input, "영업 시간이  어떻게 되나요");
+    expect(screen.getByRole("button", { name: "추가" })).toBeDisabled(); // the question itself, as the engine compares
     await userEvent.clear(input);
     await userEvent.type(input, "몇시에 문 열어요{Enter}");
     await userEvent.type(input, "영엄시간 알려줘{Enter}");
@@ -672,7 +672,7 @@ describe("비슷한 질문 (B10)", () => {
     } });
     renderKnowledge();
     await userEvent.click(await screen.findByText("비슷한 질문 0개"));
-    await userEvent.click(screen.getByRole("button", { name: "LLM으로 비슷한 질문 더 만들기" }));
+    await userEvent.click(screen.getByRole("button", { name: "FAQ 1 LLM으로 비슷한 질문 더 만들기" }));
     await userEvent.click(await screen.findByRole("button", { name: "선택한 2개 추가" }));
     expect(asked).toEqual([{ kind: "faq", id: "faq_1", count: 20 }]);
     expect(screen.getByText("비슷한 질문 2개")).toBeInTheDocument();
@@ -688,7 +688,18 @@ describe("비슷한 질문 (B10)", () => {
     expect(screen.getByLabelText("FAQ 1 비슷한 질문 추가")).toBeDisabled();
     expect(screen.getByText("비슷한 질문은 50개까지예요.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: '비슷한 질문 "질문 0" 삭제' }));
-    expect(screen.getByRole("button", { name: "LLM으로 비슷한 질문 더 만들기" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "FAQ 1 LLM으로 비슷한 질문 더 만들기" })).toBeDisabled();
     expect(screen.getByText(/저장하지 않은 바뀐 내용이 있어요/)).toBeInTheDocument();
   });
+
+  it("adding then removing a similar question leaves the FAQ unchanged (nothing to save)", async () => {
+    kbEngine();
+    renderKnowledge();
+    await userEvent.click(await screen.findByText("비슷한 질문 0개"));
+    await userEvent.type(screen.getByLabelText("FAQ 1 비슷한 질문 추가"), "영업시간{Enter}");
+    expect(screen.getByRole("button", { name: "지식베이스 저장" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: '비슷한 질문 "영업시간" 삭제' }));
+    expect(screen.getByRole("button", { name: "지식베이스 저장" })).toBeDisabled();
+  });
 });
+
