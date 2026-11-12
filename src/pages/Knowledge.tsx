@@ -172,7 +172,8 @@ function FaqTab({ kb, onChange }: { kb: KnowledgeDoc; onChange: Change }) {
 
 /** 생성형 답변: the engine's LLM writes a short answer from the passage that passed (즉문즉답형 only). */
 function GenerateField({ checked, disabled, onChange }: { checked: boolean; disabled: boolean; onChange: (on: boolean) => void }) {
-  const llm = useQuery({ queryKey: ["llm"], queryFn: llmStatus, staleTime: 60_000 });
+  // asked again when the window regains focus and on 다시 확인: a server that stopped must not stay "연결됨"
+  const llm = useQuery({ queryKey: ["llm"], queryFn: llmStatus, staleTime: 60_000, refetchOnWindowFocus: true });
   const status = llm.isPending ? "LLM 연결을 확인하는 중…"
     : llm.isError ? "LLM 연결을 확인하지 못했어요."
     : !llm.data.configured ? "이 엔진에는 LLM이 연결되어 있지 않아요. 켜 두어도 찾은 자료 원문으로 답해요."
@@ -181,7 +182,7 @@ function GenerateField({ checked, disabled, onChange }: { checked: boolean; disa
   return (
     <div className="field">
       <label className="check">
-        <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)}
+        <input type="checkbox" checked={checked && !disabled} disabled={disabled} onChange={(e) => onChange(e.target.checked)}
                aria-describedby="kb-generate-help" />
         생성형 답변 (찾은 자료로 LLM이 짧게 답해요)
       </label>
@@ -189,6 +190,9 @@ function GenerateField({ checked, disabled, onChange }: { checked: boolean; disa
         {disabled ? "즉문즉답형에서만 쓸 수 있어요. " : ""}
         자료에 없는 숫자가 있거나 모델이 답할 수 없다고 하면 그 답은 버리고 폴백으로 가요. LLM이 제때 답하지 못하면 찾은 자료 원문으로 답해요. {status}
       </p>
+      <button type="button" className="btn" disabled={llm.isFetching} onClick={() => void llm.refetch()}>
+        {llm.isFetching ? "LLM 연결 확인 중…" : "LLM 연결 다시 확인"}
+      </button>
     </div>
   );
 }

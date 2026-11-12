@@ -15,8 +15,15 @@ createServer((req, res) => {
       res.writeHead(404, { "Content-Type": "application/json" }).end("{}");
       return;
     }
-    const request = JSON.parse(body || "{}");
-    const user = request.messages?.find((m) => m.role === "user")?.content ?? "";
+    let request;
+    try {
+      request = JSON.parse(body || "{}");
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json" }).end('{"error":"not JSON"}');
+      return;
+    }
+    const messages = Array.isArray(request?.messages) ? request.messages : [];
+    const user = String(messages.find((m) => m?.role === "user")?.content ?? "");
     const passage = /\[자료 1\] [^\n]*\n([^\n]*)/.exec(user)?.[1] ?? "";
     const first = /^.*?[.!?](?=\s|$)/.exec(passage)?.[0] ?? passage;
     const content = first ? `안내해 드릴게요. ${first}` : "네";

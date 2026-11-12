@@ -569,6 +569,31 @@ describe("생성형 답변 (E-F)", () => {
     expect(screen.getByText(/즉문즉답형에서만 쓸 수 있어요/)).toBeInTheDocument();
   });
 
+  it("켜 둔 채 답안 추천형으로 바꾸면 꺼진 것으로 보이고, 즉문즉답형으로 돌아오면 다시 켜져 있다", async () => {
+    kbEngine({ draft: () => ({ body: { ...structuredClone(DOC), settings: { mode: "suggest", suggest_text: "골라 주세요", generate: true } }, headers: { ETag: '"1"' } }) });
+    renderKnowledge();
+    const box = await screen.findByLabelText(/생성형 답변/);
+    expect(box).toBeDisabled();
+    expect(box).not.toBeChecked(); // the engine never generates in 답안 추천형
+    await userEvent.click(screen.getByLabelText(/즉문즉답형/));
+    await waitFor(() => expect(screen.getByLabelText(/생성형 답변/)).toBeChecked());
+  });
+
+  it("LLM 연결 다시 확인은 엔진에 다시 물어 지금 상태를 보여준다", async () => {
+    let calls = 0;
+    kbEngine({ llm: () => {
+      calls += 1;
+      return { body: calls === 1
+        ? { configured: true, model: "qwen3-8b", ok: true, ms: 12, error: null }
+        : { configured: true, model: "qwen3-8b", ok: false, ms: null, error: "timeout: no answer within 3.5s" } };
+    } });
+    renderKnowledge();
+    expect(await screen.findByText(/연결됨: qwen3-8b \(12ms\)/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "LLM 연결 다시 확인" }));
+    expect(await screen.findByText(/LLM이 답하지 않아요: timeout: no answer within 3\.5s/)).toBeInTheDocument();
+    expect(calls).toBe(2);
+  });
+
   it("LLM이 없거나 답하지 않으면 그렇게 알린다", async () => {
     kbEngine();
     const first = renderKnowledge();
